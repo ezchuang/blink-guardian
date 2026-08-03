@@ -101,6 +101,19 @@
     .mini-stat { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.46); }
     .mini-stat span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 7px; }
     .mini-stat strong { font-size: 23px; font-weight: 680; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+    .history-card { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.46); }
+    .history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+    .history-head strong { font-size: 13px; }
+    .expand-chart { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--green); padding: 4px 0; cursor: pointer; font-size: 12px; font-weight: 720; }
+    .expand-chart::after { content: "↗"; font-size: 14px; }
+    .chart-wrap { position: relative; width: 100%; min-height: 108px; cursor: pointer; }
+    .chart-wrap canvas { display: block; width: 100%; height: 108px; }
+    .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.5; pointer-events: none; }
+    .chart-note { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; color: var(--muted); font-size: 10px; }
+    .chart-note i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; background: var(--coral); }
+    .window-switcher { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(23,33,28,.06); }
+    .window-switcher button { min-width: 38px; border: 0; border-radius: 7px; background: transparent; padding: 6px 7px; color: var(--muted); cursor: pointer; font-size: 11px; }
+    .window-switcher button.active { background: white; color: var(--ink); box-shadow: 0 2px 8px rgba(23,33,28,.1); font-weight: 720; }
     .settings { margin-top: auto; padding-top: 24px; }
     .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; font-size: 13px; }
     .setting-row label { color: var(--muted); }
@@ -125,6 +138,31 @@
     .reminder-card p { margin: 14px auto 22px; max-width: 330px; line-height: 1.65; color: #354239; }
     .reminder-card button { border: 0; border-radius: 12px; padding: 12px 18px; background: var(--ink); color: white; cursor: pointer; }
 
+    .history-modal { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 22px; background: rgba(13,25,19,.72); backdrop-filter: blur(14px); opacity: 0; pointer-events: none; transition: opacity .25s; }
+    .history-modal.show { opacity: 1; pointer-events: auto; }
+    .history-dialog { width: min(1040px, 100%); max-height: min(820px, calc(100vh - 44px)); overflow: auto; padding: 26px; border-radius: 26px; background: #f8f7f1; box-shadow: 0 32px 100px rgba(0,0,0,.3); }
+    .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .dialog-head h2 { margin: 0; font-family: Georgia, "Noto Serif TC", serif; font-size: 34px; font-weight: 500; letter-spacing: -.04em; }
+    .dialog-head p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+    .close-dialog { width: 38px; height: 38px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; background: white; cursor: pointer; font-size: 20px; }
+    .dialog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+    .history-legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 11px; }
+    .history-legend span::before { content: ""; display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 4px; background: var(--green); }
+    .history-legend .target-key::before { height: 1px; background: var(--muted); }
+    .history-legend .event-key::before { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+    .large-chart { position: relative; min-height: 350px; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: white; }
+    .large-chart canvas { display: block; width: 100%; height: 330px; }
+    .history-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+    .summary-item { padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.55); }
+    .summary-item span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+    .summary-item strong { font-size: 22px; letter-spacing: -.03em; }
+    .event-log { margin-top: 22px; }
+    .event-log h3 { margin: 0 0 10px; font-size: 14px; }
+    .event-list { display: grid; gap: 6px; }
+    .event-row { display: grid; grid-template-columns: 82px 120px 1fr; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .event-row strong { color: var(--ink); font-weight: 650; }
+    .event-empty { padding: 18px 0; color: var(--muted); font-size: 12px; }
+
     .how { display: grid; grid-template-columns: 1fr 1.35fr; gap: 60px; margin: 72px 0 0; }
     .how h2 { margin: 0; font-family: Georgia, "Noto Serif TC", serif; font-size: clamp(34px,5vw,56px); line-height: 1.05; font-weight: 500; letter-spacing: -.045em; }
     .steps { counter-reset: step; }
@@ -147,6 +185,7 @@
       .camera-panel { min-height: 520px; }
       .stats { min-height: 570px; }
       .evidence { gap: 14px; }
+      .history-summary { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 600px) {
       .shell { width: min(100% - 24px, 1180px); padding-top: 18px; }
@@ -158,6 +197,13 @@
       .monitor { border-radius: 20px; }
       .camera-panel { min-height: 470px; }
       .stats { padding: 20px; }
+      .dialog-toolbar { align-items: flex-start; flex-direction: column; }
+      .window-switcher { width: 100%; overflow-x: auto; }
+      .window-switcher button { flex: 1; }
+      .history-dialog { padding: 20px; border-radius: 20px; }
+      .large-chart canvas { height: 270px; }
+      .event-row { grid-template-columns: 72px 1fr; }
+      .event-row span:last-child { grid-column: 2; }
       .how { gap: 28px; }
       footer { flex-direction: column; }
     }
@@ -221,6 +267,14 @@
             <div class="mini-stat"><span>本次眨眼</span><strong id="totalBlinks">0</strong></div>
             <div class="mini-stat"><span>距上次眨眼</span><strong><b id="lastBlink">—</b> 秒</strong></div>
           </div>
+          <div class="history-card">
+            <div class="history-head"><strong>近 1 小時趨勢</strong><button class="expand-chart" id="expandChart" type="button">放大查看</button></div>
+            <div class="chart-wrap" id="compactChartWrap" role="button" tabindex="0" aria-label="開啟眨眼歷史圖表">
+              <canvas id="compactChart" aria-hidden="true"></canvas>
+              <div class="chart-empty" id="compactEmpty">開始監測後，每 30 秒留下<br>一筆頻率紀錄</div>
+            </div>
+            <div class="chart-note"><span><i></i>提醒事件</span><span>僅存此裝置 · 最長 24hr</span></div>
+          </div>
           <div class="settings">
             <div class="setting-row">
               <label for="targetRange">提醒目標</label>
@@ -232,6 +286,39 @@
         </aside>
       </div>
     </section>
+
+    <div class="history-modal" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="historyTitle" aria-hidden="true" inert>
+      <div class="history-dialog">
+        <div class="dialog-head">
+          <div><h2 id="historyTitle">眨眼節奏紀錄</h2><p>空白區段代表未監測、找不到臉，或頁面進入背景。</p></div>
+          <button class="close-dialog" id="closeHistory" type="button" aria-label="關閉歷史圖表">×</button>
+        </div>
+        <div class="dialog-toolbar">
+          <div class="window-switcher" id="windowSwitcher" aria-label="切換圖表時間範圍">
+            <button type="button" data-window="15">15m</button>
+            <button type="button" data-window="60" class="active">1hr</button>
+            <button type="button" data-window="240">4hr</button>
+            <button type="button" data-window="720">12hr</button>
+            <button type="button" data-window="1440">24hr</button>
+          </div>
+          <div class="history-legend"><span>眨眼頻率</span><span class="target-key">提醒目標</span><span class="event-key">提醒時機</span></div>
+        </div>
+        <div class="large-chart">
+          <canvas id="largeChart" aria-label="眨眼頻率與提醒事件圖表"></canvas>
+          <div class="chart-empty" id="largeEmpty">這個時間範圍內還沒有監測紀錄</div>
+        </div>
+        <div class="history-summary">
+          <div class="summary-item"><span>平均頻率</span><strong id="historyAverage">—</strong></div>
+          <div class="summary-item"><span>最低頻率</span><strong id="historyMinimum">—</strong></div>
+          <div class="summary-item"><span>眨眼提醒</span><strong id="historyBlinkReminders">0</strong></div>
+          <div class="summary-item"><span>遠望提醒</span><strong id="historyBreakReminders">0</strong></div>
+        </div>
+        <div class="event-log">
+          <h3>提醒與暫停紀錄</h3>
+          <div class="event-list" id="eventList"></div>
+        </div>
+      </div>
+    </div>
 
     <section class="how" aria-labelledby="howTitle">
       <h2 id="howTitle">有感提醒，<br>沒有監視感。</h2>
@@ -267,7 +354,13 @@
       rate: $("rateValue"), ring: $("rateRing"), total: $("totalBlinks"), last: $("lastBlink"),
       time: $("sessionTime"), estimate: $("estimateLabel"), target: $("targetRange"), targetValue: $("targetValue"),
       sound: $("soundToggle"), start: $("startButton"), reminder: $("reminder"), reminderTitle: $("reminderTitle"),
-      reminderCopy: $("reminderCopy"), dismiss: $("dismissReminder"), test: $("testButton"), toast: $("toast")
+      reminderCopy: $("reminderCopy"), dismiss: $("dismissReminder"), test: $("testButton"), toast: $("toast"),
+      compactChart: $("compactChart"), compactEmpty: $("compactEmpty"), compactChartWrap: $("compactChartWrap"),
+      expandChart: $("expandChart"), historyModal: $("historyModal"), closeHistory: $("closeHistory"),
+      windowSwitcher: $("windowSwitcher"), largeChart: $("largeChart"), largeEmpty: $("largeEmpty"),
+      historyAverage: $("historyAverage"), historyMinimum: $("historyMinimum"),
+      historyBlinkReminders: $("historyBlinkReminders"), historyBreakReminders: $("historyBreakReminders"),
+      eventList: $("eventList")
     };
 
     let landmarker = null;
@@ -291,6 +384,16 @@
     let closeThreshold = .58;
     let openThreshold = .34;
     let reminderBlinkGoal = 0;
+    let rateStartedAt = 0;
+    let inactiveAccumulated = 0;
+    let hiddenStartedAt = 0;
+    let historyWindowMinutes = 60;
+    let lastHistorySampleAt = 0;
+    let lastChartDrawAt = 0;
+    const HISTORY_KEY = "blinkGuardian.history.v1";
+    const HISTORY_MAX_AGE = 24 * 60 * 60 * 1000;
+    const HISTORY_SAMPLE_INTERVAL = 30000;
+    let history = loadHistory();
 
     function setStatus(label, title, hint, isLive = false) {
       ui.status.textContent = label;
@@ -330,16 +433,218 @@
       return `${m}:${s}`;
     }
 
+    function loadHistory() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || "{}");
+        const samples = Array.isArray(parsed.samples) ? parsed.samples : [];
+        const events = Array.isArray(parsed.events) ? parsed.events : [];
+        const cutoff = Date.now() - HISTORY_MAX_AGE;
+        return {
+          samples: samples.filter((item) => Number.isFinite(item?.t) && Number.isFinite(item?.rate) && item.t >= cutoff),
+          events: events.filter((item) => Number.isFinite(item?.t) && typeof item?.type === "string" && item.t >= cutoff)
+        };
+      } catch {
+        return { samples: [], events: [] };
+      }
+    }
+
+    function saveHistory() {
+      const cutoff = Date.now() - HISTORY_MAX_AGE;
+      history.samples = history.samples.filter((item) => item.t >= cutoff);
+      history.events = history.events.filter((item) => item.t >= cutoff);
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
+      catch { toast("無法寫入本機紀錄；瀏覽器儲存空間可能已停用。"); }
+    }
+
+    function recordEvent(type, label, detail = "") {
+      history.events.push({ t: Date.now(), type, label, detail });
+      saveHistory();
+      drawHistoryCharts(true);
+    }
+
+    function recordSample(now, force = false) {
+      const wallNow = Date.now();
+      const facePresent = now - faceLastSeen < 1800;
+      if (!running || !facePresent || (!force && document.hidden)) return;
+      if (!force && wallNow - lastHistorySampleAt < HISTORY_SAMPLE_INTERVAL) return;
+      history.samples.push({
+        t: wallNow,
+        rate: currentRate(now),
+        target: Number(ui.target.value),
+        total: blinks.length
+      });
+      lastHistorySampleAt = wallNow;
+      saveHistory();
+    }
+
+    function chartData(minutes) {
+      const end = Date.now();
+      const start = end - minutes * 60000;
+      return {
+        start,
+        end,
+        samples: history.samples.filter((item) => item.t >= start && item.t <= end),
+        events: history.events.filter((item) => item.t >= start && item.t <= end)
+      };
+    }
+
+    function prepareCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      return { ctx, width, height };
+    }
+
+    function formatAxisTime(timestamp, minutes) {
+      const date = new Date(timestamp);
+      if (minutes >= 720) return date.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit" });
+      return date.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+
+    function drawChart(canvas, minutes, expanded = false) {
+      const { ctx, width, height } = prepareCanvas(canvas);
+      const data = chartData(minutes);
+      const padding = expanded ? { top: 20, right: 18, bottom: 34, left: 44 } : { top: 8, right: 5, bottom: 8, left: 5 };
+      const plotWidth = width - padding.left - padding.right;
+      const plotHeight = height - padding.top - padding.bottom;
+      if (plotWidth <= 0 || plotHeight <= 0) return data;
+
+      const target = Number(ui.target.value);
+      const peak = Math.max(target + 4, 20, ...data.samples.map((item) => Math.min(40, item.rate)));
+      const yMax = Math.ceil(peak / 5) * 5;
+      const x = (t) => padding.left + ((t - data.start) / (data.end - data.start)) * plotWidth;
+      const y = (rate) => padding.top + plotHeight - (Math.min(yMax, rate) / yMax) * plotHeight;
+
+      if (expanded) {
+        ctx.font = "11px system-ui, sans-serif";
+        ctx.fillStyle = "#687169";
+        ctx.strokeStyle = "rgba(23,33,28,.09)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i += 1) {
+          const value = (yMax / 4) * i;
+          const py = y(value);
+          ctx.beginPath(); ctx.moveTo(padding.left, py); ctx.lineTo(width - padding.right, py); ctx.stroke();
+          ctx.fillText(String(Math.round(value)), 8, py + 4);
+        }
+        for (let i = 0; i <= 4; i += 1) {
+          const t = data.start + ((data.end - data.start) / 4) * i;
+          const label = formatAxisTime(t, minutes);
+          const px = x(t);
+          ctx.textAlign = i === 0 ? "left" : i === 4 ? "right" : "center";
+          ctx.fillText(label, px, height - 10);
+        }
+        ctx.textAlign = "left";
+      }
+
+      ctx.save();
+      ctx.setLineDash(expanded ? [5, 5] : [3, 3]);
+      ctx.strokeStyle = "rgba(104,113,105,.65)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padding.left, y(target)); ctx.lineTo(width - padding.right, y(target)); ctx.stroke();
+      ctx.restore();
+
+      for (const event of data.events.filter((item) => item.type === "blink" || item.type === "break")) {
+        const px = x(event.t);
+        ctx.strokeStyle = "rgba(237,118,93,.4)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px, padding.top); ctx.lineTo(px, padding.top + plotHeight); ctx.stroke();
+        ctx.fillStyle = "#ed765d";
+        ctx.beginPath(); ctx.arc(px, padding.top + plotHeight - 2, expanded ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+
+      ctx.strokeStyle = "#12664f";
+      ctx.lineWidth = expanded ? 2.5 : 2;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      let previous = null;
+      for (const sample of data.samples) {
+        const px = x(sample.t);
+        const py = y(sample.rate);
+        if (!previous || sample.t - previous.t > HISTORY_SAMPLE_INTERVAL * 2.5) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+        previous = sample;
+      }
+      ctx.stroke();
+
+      if (expanded) {
+        ctx.fillStyle = "#12664f";
+        for (const sample of data.samples) {
+          ctx.beginPath(); ctx.arc(x(sample.t), y(sample.rate), 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      return data;
+    }
+
+    function renderHistoryDetails(data) {
+      const rates = data.samples.map((item) => item.rate).filter(Number.isFinite);
+      const blinkReminders = data.events.filter((item) => item.type === "blink");
+      const breakReminders = data.events.filter((item) => item.type === "break");
+      ui.historyAverage.textContent = rates.length ? `${Math.round(rates.reduce((sum, value) => sum + value, 0) / rates.length)} 次` : "—";
+      ui.historyMinimum.textContent = rates.length ? `${Math.min(...rates)} 次` : "—";
+      ui.historyBlinkReminders.textContent = String(blinkReminders.length);
+      ui.historyBreakReminders.textContent = String(breakReminders.length);
+
+      const rows = [...data.events].sort((a,b) => b.t - a.t).slice(0, 16);
+      ui.eventList.replaceChildren();
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "event-empty";
+        empty.textContent = "這個時間範圍內沒有提醒或暫停紀錄。";
+        ui.eventList.append(empty);
+        return;
+      }
+      for (const event of rows) {
+        const time = new Date(event.t).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+        const type = event.type === "blink" ? "眨眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
+        const row = document.createElement("div");
+        const timeElement = document.createElement("time");
+        const typeElement = document.createElement("strong");
+        const detailElement = document.createElement("span");
+        row.className = "event-row";
+        timeElement.dateTime = new Date(event.t).toISOString();
+        timeElement.textContent = time;
+        typeElement.textContent = type;
+        detailElement.textContent = event.detail || event.label || "—";
+        row.append(timeElement, typeElement, detailElement);
+        ui.eventList.append(row);
+      }
+    }
+
+    function drawHistoryCharts(force = false) {
+      const now = performance.now();
+      if (!force && now - lastChartDrawAt < 2000) return;
+      lastChartDrawAt = now;
+      const compactData = drawChart(ui.compactChart, 60, false);
+      ui.compactEmpty.hidden = compactData.samples.length > 0;
+      if (ui.historyModal.classList.contains("show")) {
+        const largeData = drawChart(ui.largeChart, historyWindowMinutes, true);
+        ui.largeEmpty.hidden = largeData.samples.length > 0;
+        renderHistoryDetails(largeData);
+      }
+    }
+
+    function activeElapsed(now) {
+      const currentHidden = hiddenStartedAt ? now - hiddenStartedAt : 0;
+      return Math.max(0, now - startedAt - inactiveAccumulated - currentHidden);
+    }
+
     function currentRate(now) {
       const windowStart = now - 60000;
       const recent = blinks.filter((time) => time >= windowStart);
-      const elapsed = Math.max(1, Math.min(60, (now - startedAt) / 1000));
+      const elapsed = Math.max(1, Math.min(60, (now - rateStartedAt) / 1000));
       return Math.round(recent.length * 60 / elapsed);
     }
 
     function updateStats(now) {
-      if (!running) return;
-      const elapsed = (now - startedAt) / 1000;
+      if (!running || document.hidden) return;
+      const elapsed = activeElapsed(now) / 1000;
       const rate = currentRate(now);
       const target = Number(ui.target.value);
       const gap = lastBlinkAt ? (now - lastBlinkAt) / 1000 : elapsed;
@@ -354,18 +659,21 @@
       const lowRate = elapsed >= 30 && rate < target;
       const longGap = elapsed >= 12 && gap >= 10;
       if (facePresent && (longGap || lowRate) && now - lastReminderAt > 15000 && !ui.reminder.classList.contains("show")) {
-        showBlinkReminder();
+        showBlinkReminder(false, longGap ? "連續 10 秒未眨眼" : `頻率低於 ${target} 次／分鐘`);
       }
       if (now >= nextBreakAt && !breakTimer) showDistanceBreak();
+      recordSample(now);
+      drawHistoryCharts();
     }
 
-    function showBlinkReminder(test = false) {
+    function showBlinkReminder(test = false, reason = "") {
       lastReminderAt = performance.now();
       reminderBlinkGoal = blinks.length + 3;
       ui.reminderTitle.textContent = test ? "這是提醒預覽" : "讓眼睛喝口水";
       ui.reminderCopy.textContent = "慢慢、完整地眨眼 3 次，確認上下眼皮有輕輕碰到。";
       ui.dismiss.textContent = "我眨好了";
       ui.reminder.classList.add("show");
+      if (!test) recordEvent("blink", "眨眼提醒", reason);
       beep();
     }
 
@@ -375,6 +683,7 @@
       ui.reminderTitle.textContent = "看看遠方";
       ui.reminder.classList.add("show");
       ui.dismiss.textContent = "稍後再說";
+      recordEvent("break", "遠望提醒", "持續監測滿 20 分鐘");
       beep();
       const render = () => { ui.reminderCopy.textContent = `看向約 6 公尺外，讓眼睛放鬆。還有 ${remaining} 秒。`; };
       render();
@@ -425,6 +734,9 @@
         await ui.video.play();
         running = true;
         startedAt = performance.now();
+        rateStartedAt = startedAt;
+        inactiveAccumulated = 0;
+        hiddenStartedAt = 0;
         lastBlinkAt = startedAt;
         faceLastSeen = 0;
         blinks = [];
@@ -433,6 +745,7 @@
         nextBreakAt = startedAt + 20 * 60 * 1000;
         calibrationUntil = startedAt + 3000;
         calibrationScores = [];
+        lastHistorySampleAt = Date.now();
         ui.panel.classList.add("live");
         ui.start.disabled = false;
         ui.start.textContent = "停止監測";
@@ -450,6 +763,7 @@
     }
 
     function stop() {
+      recordSample(performance.now(), true);
       running = false;
       cancelAnimationFrame(animationId);
       stream?.getTracks().forEach((track) => track.stop());
@@ -503,6 +817,58 @@
       setStatus("監測中", "保持自然就好", "偵測到太久未眨眼時，這裡會提醒你。", true);
     }
 
+    function handleVisibilityChange() {
+      if (!running) return;
+      const now = performance.now();
+      if (document.hidden) {
+        recordSample(now, true);
+        hiddenStartedAt = now;
+        cancelAnimationFrame(animationId);
+        eyeClosed = false;
+        ui.reminder.classList.remove("show");
+        if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
+        setStatus("背景暫停", "目前沒有計數", "瀏覽器在背景會停止高頻影像處理；回到此頁後會自動重新校正。", false);
+        recordEvent("pause", "監測暫停", "頁面進入背景或視窗最小化");
+      } else if (hiddenStartedAt) {
+        const hiddenDuration = now - hiddenStartedAt;
+        inactiveAccumulated += hiddenDuration;
+        nextBreakAt += hiddenDuration;
+        hiddenStartedAt = 0;
+        rateStartedAt = now;
+        lastBlinkAt = now;
+        lastReminderAt = now;
+        faceLastSeen = 0;
+        eyeClosed = false;
+        calibrationUntil = now + 1500;
+        calibrationScores = [];
+        lastVideoTime = -1;
+        lastHistorySampleAt = Date.now();
+        setStatus("重新校正", "自然看著螢幕", "約 2 秒後恢復計數；背景期間會在圖表中保留空白。", true);
+        recordEvent("resume", "恢復監測", "頁面重新回到前景");
+        loop();
+      }
+    }
+
+    let historyReturnFocus = null;
+
+    function openHistory() {
+      historyReturnFocus = document.activeElement;
+      ui.historyModal.classList.add("show");
+      ui.historyModal.setAttribute("aria-hidden", "false");
+      ui.historyModal.removeAttribute("inert");
+      document.body.style.overflow = "hidden";
+      ui.closeHistory.focus();
+      requestAnimationFrame(() => drawHistoryCharts(true));
+    }
+
+    function closeHistory() {
+      ui.historyModal.classList.remove("show");
+      ui.historyModal.setAttribute("aria-hidden", "true");
+      ui.historyModal.setAttribute("inert", "");
+      document.body.style.overflow = "";
+      historyReturnFocus?.focus?.();
+    }
+
     function loop() {
       if (!running) return;
       const now = performance.now();
@@ -546,7 +912,25 @@
       if (soundOn) { beep(); toast("提示音已開啟。 "); } else toast("提示音已關閉。 ");
     });
     ui.target.addEventListener("input", () => { ui.targetValue.textContent = `${ui.target.value} 次`; });
+    ui.expandChart.addEventListener("click", openHistory);
+    ui.compactChartWrap.addEventListener("click", openHistory);
+    ui.compactChartWrap.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openHistory(); }
+    });
+    ui.closeHistory.addEventListener("click", closeHistory);
+    ui.historyModal.addEventListener("click", (event) => { if (event.target === ui.historyModal) closeHistory(); });
+    ui.windowSwitcher.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-window]");
+      if (!button) return;
+      historyWindowMinutes = Number(button.dataset.window);
+      ui.windowSwitcher.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+      drawHistoryCharts(true);
+    });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && ui.historyModal.classList.contains("show")) closeHistory(); });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("resize", () => drawHistoryCharts(true));
     window.addEventListener("pagehide", () => { stream?.getTracks().forEach((track) => track.stop()); landmarker?.close?.(); });
+    drawHistoryCharts(true);
   </script>
 </body>
 </html>

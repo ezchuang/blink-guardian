@@ -17,5 +17,11 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /@mediapipe\/tasks-vision@\$\{MP_VERSION\}/);
     assert.match(html, /影像只在你的裝置上處理/);
     assert.match(html, /提醒目標/);
+    assert.match(html, /眨眼節奏紀錄/);
+    assert.match(html, /data-window="1440"/);
+    assert.match(html, /HISTORY_MAX_AGE = 24 \* 60 \* 60 \* 1000/);
+    assert.match(html, /localStorage\.setItem\(HISTORY_KEY/);
+    assert.match(html, /visibilitychange/);
+    assert.match(html, /頁面進入背景或視窗最小化/);
   }
 });
