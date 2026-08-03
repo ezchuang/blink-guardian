@@ -39,7 +39,18 @@ test("uses the more visible eye when the face is angled", () => {
   const detector = calibratedDetector();
   const angled = landmarks(.16, .04);
   const frames = [
-    [0, .05, .05], [33, .8, .18], [66, .8, .18], [99, .8, .18],
+    [0, .05, .05], [33, .8, .01], [66, .8, .01], [99, .8, .01],
+    [132, .05, .05], [165, .05, .05], [198, .05, .05]
+  ];
+  const results = frames.map(([now, left, right]) => detector.update({ now, left, right, landmarks: angled }));
+  assert.equal(results.some((result) => result.blink), true);
+});
+
+test("uses the visible right eye when the face turns the other way", () => {
+  const detector = calibratedDetector();
+  const angled = landmarks(.04, .16);
+  const frames = [
+    [0, .05, .05], [33, .01, .8], [66, .01, .8], [99, .01, .8],
     [132, .05, .05], [165, .05, .05], [198, .05, .05]
   ];
   const results = frames.map(([now, left, right]) => detector.update({ now, left, right, landmarks: angled }));
@@ -74,6 +85,6 @@ test("ignores an asymmetric one-frame score spike", () => {
 test("lowers the close threshold when sensitivity increases", () => {
   const detector = new AngleRobustBlinkDetector({ sensitivity: 1 });
   const conservative = detector.thresholds(false).close;
-  detector.setSensitivity(5);
+  detector.setSensitivity(6);
   assert.ok(detector.thresholds(false).close < conservative);
 });

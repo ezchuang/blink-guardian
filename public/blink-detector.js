@@ -28,24 +28,23 @@ export function eyeVisibilityWeights(landmarks, aspectRatio = 1) {
 }
 
 export class AngleRobustBlinkDetector {
-  constructor({ sensitivity = 4 } = {}) {
+  constructor({ sensitivity = 5 } = {}) {
     this.setSensitivity(sensitivity);
     this.resetCalibration();
   }
 
   setSensitivity(level) {
-    this.sensitivityLevel = clamp(Math.round(Number(level) || 3), 1, 5);
-    this.sensitivity = (this.sensitivityLevel - 1) / 4;
+    this.sensitivityLevel = clamp(Math.round(Number(level) || 5), 1, 6);
+    this.sensitivity = (this.sensitivityLevel - 1) / 5;
   }
 
   thresholds(angled = false) {
-    const close = (angled ? .37 : .39) - this.sensitivity * .12;
+    const close = (angled ? .37 : .39) - this.sensitivity * .2;
     return {
       close,
-      minEye: (angled ? .08 : .2) - this.sensitivity * .05,
-      strongEye: (angled ? .48 : .46) - this.sensitivity * .08,
-      open: .13 + this.sensitivity * .04,
-      openEye: .22 + this.sensitivity * .06
+      minEye: .2 - this.sensitivity * .08,
+      open: .13 + this.sensitivity * .05,
+      openEye: .22 + this.sensitivity * .08
     };
   }
 
@@ -100,14 +99,21 @@ export class AngleRobustBlinkDetector {
     const rawCombined = rawLeftLevel * weights.left + rawRightLevel * weights.right;
     const angled = weights.asymmetry >= .1;
     const threshold = this.thresholds(angled);
+    const visibleLeft = weights.left >= weights.right;
+    const visibleLevel = visibleLeft ? leftLevel : rightLevel;
+    const rawVisibleLevel = visibleLeft ? rawLeftLevel : rawRightLevel;
     const closeSignal = angled
-      ? combined >= threshold.close && Math.max(leftLevel, rightLevel) >= threshold.strongEye && Math.min(leftLevel, rightLevel) >= threshold.minEye
+      ? visibleLevel >= threshold.close
       : combined >= threshold.close && Math.min(leftLevel, rightLevel) >= threshold.minEye;
     const fastCloseSignal = angled
-      ? rawCombined >= threshold.close + .16 && Math.max(rawLeftLevel, rawRightLevel) >= threshold.strongEye + .18 && Math.min(rawLeftLevel, rawRightLevel) >= threshold.minEye
+      ? rawVisibleLevel >= threshold.close + .16
       : rawCombined >= threshold.close + .16 && Math.min(rawLeftLevel, rawRightLevel) >= threshold.minEye + .18;
-    const rawOpenSignal = rawCombined <= threshold.open && Math.max(rawLeftLevel, rawRightLevel) <= threshold.openEye;
-    const openSignal = (combined <= threshold.open && Math.max(leftLevel, rightLevel) <= threshold.openEye)
+    const rawOpenSignal = angled
+      ? rawVisibleLevel <= threshold.openEye
+      : rawCombined <= threshold.open && Math.max(rawLeftLevel, rawRightLevel) <= threshold.openEye;
+    const openSignal = (angled
+      ? visibleLevel <= threshold.openEye
+      : combined <= threshold.open && Math.max(leftLevel, rightLevel) <= threshold.openEye)
       || (this.fastClosure && rawOpenSignal);
     let blink = false;
 

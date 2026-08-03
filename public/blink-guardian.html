@@ -119,6 +119,7 @@
     .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; font-size: 13px; }
     .setting-row label { color: var(--muted); }
     .target-control { display: flex; gap: 10px; align-items: center; }
+    .target-control strong { min-width: 54px; text-align: right; white-space: nowrap; }
     input[type="range"] { width: 110px; accent-color: var(--green); }
     .toggle { width: 42px; height: 24px; border: 0; border-radius: 99px; background: #c7cbc6; padding: 3px; cursor: pointer; transition: .2s; }
     .toggle::after { content: ""; display: block; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: 0 2px 5px rgba(0,0,0,.18); transition: .2s; }
@@ -283,7 +284,7 @@
             </div>
             <div class="setting-row">
               <label for="sensitivityRange">眨眼靈敏度</label>
-              <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="5" value="4" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">靈敏</strong></div>
+              <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="6" value="5" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">最靈敏</strong></div>
             </div>
             <div class="setting-row"><span>提示音</span><button class="toggle" id="soundToggle" type="button" aria-label="切換提示音" aria-pressed="true"></button></div>
             <button class="primary" id="startButton" type="button">開啟鏡頭並開始</button>
@@ -379,12 +380,8 @@
     let startedAt = 0;
     let lastBlinkAt = 0;
     let blinks = [];
-    const SENSITIVITY_KEY = "blinkGuardian.sensitivity.v1";
-    const savedSensitivity = (() => {
-      try { return Number(localStorage.getItem(SENSITIVITY_KEY)) || 4; }
-      catch { return 4; }
-    })();
-    const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: savedSensitivity });
+    const DEFAULT_SENSITIVITY = 5;
+    const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: DEFAULT_SENSITIVITY });
     let faceLastSeen = 0;
     let lastReminderAt = 0;
     let soundOn = true;
@@ -418,18 +415,19 @@
       toast.timer = setTimeout(() => ui.toast.classList.remove("show"), 3000);
     }
 
-    function updateSensitivity(level, persist = true) {
-      const labels = ["保守", "較保守", "標準", "靈敏", "最靈敏"];
-      const value = Math.min(5, Math.max(1, Number(level) || 4));
+    function setThresholdMarker(value) {
+      const marker = `${Math.round(value * 100)}%`;
+      ui.left.parentElement.style.setProperty("--threshold", marker);
+      ui.right.parentElement.style.setProperty("--threshold", marker);
+    }
+
+    function updateSensitivity(level) {
+      const labels = ["保守", "較保守", "標準", "靈敏", "最靈敏", "極靈敏"];
+      const value = Math.min(6, Math.max(1, Number(level) || DEFAULT_SENSITIVITY));
       blinkDetector.setSensitivity(value);
       ui.sensitivity.value = String(value);
       ui.sensitivityValue.textContent = labels[value - 1];
-      const marker = `${Math.round(blinkDetector.thresholds(false).close * 100)}%`;
-      ui.left.parentElement.style.setProperty("--threshold", marker);
-      ui.right.parentElement.style.setProperty("--threshold", marker);
-      if (persist) {
-        try { localStorage.setItem(SENSITIVITY_KEY, String(value)); } catch {}
-      }
+      setThresholdMarker(blinkDetector.thresholds(false).close);
     }
 
     function beep() {
@@ -797,6 +795,7 @@
       ui.right.style.height = "0%";
       ui.reminder.classList.remove("show");
       if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
+      updateSensitivity(DEFAULT_SENSITIVITY);
       ui.start.textContent = "重新開始監測";
       setStatus("已停止", "鏡頭已關閉", "本次資料只存在記憶體中，重新開始時會清除。 ");
     }
@@ -904,6 +903,7 @@
               });
               ui.left.style.height = `${Math.round(detection.leftLevel * 100)}%`;
               ui.right.style.height = `${Math.round(detection.rightLevel * 100)}%`;
+              setThresholdMarker(detection.closeThreshold);
               if (detection.blink) registerBlink(now);
               if (now - faceLastSeen < 500) setStatus("監測中", "保持自然就好", "會依臉部角度調整左右眼的判定權重。", true);
             }
@@ -948,7 +948,7 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("resize", () => drawHistoryCharts(true));
     window.addEventListener("pagehide", () => { stream?.getTracks().forEach((track) => track.stop()); landmarker?.close?.(); });
-    updateSensitivity(savedSensitivity, false);
+    updateSensitivity(DEFAULT_SENSITIVITY);
     drawHistoryCharts(true);
   </script>
 </body>
