@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AngleRobustBlinkDetector, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../public/blink-detector.js";
+import { AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../public/blink-detector.js";
 
 function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1, noseY = .48) {
   const points = Array.from({ length: 388 }, () => ({ x: 0, y: 0 }));
@@ -172,4 +172,32 @@ test("builds and reuses a baseline for a changed face angle", () => {
   assert.ok(switched);
   assert.equal(switched.recalibrating, false);
   assert.equal(switched.state, "open");
+});
+
+test("reminds only after a sustained low blink trend", () => {
+  const tracker = new BlinkTrendTracker();
+  tracker.reset(0);
+  for (let now = 100; now <= 80000; now += 100) {
+    tracker.update(now, "open");
+    if (now % 5000 === 0) tracker.recordBlink(now, 120);
+  }
+  for (let now = 80100; now <= 150000; now += 100) tracker.update(now, "open");
+
+  const metrics = tracker.metrics(150000);
+  assert.equal(metrics.ready, true);
+  assert.ok(metrics.rate < metrics.threshold);
+  assert.equal(tracker.shouldRemind(150000, "open"), true);
+});
+
+test("excludes uncertain time and credits a long eye rest", () => {
+  const tracker = new BlinkTrendTracker({ minimumObservedMs: 5000 });
+  tracker.reset(0);
+  for (let now = 100; now <= 10000; now += 100) tracker.update(now, "open");
+  const beforeUncertain = tracker.metrics(10000).observedMs;
+  for (let now = 10100; now <= 20000; now += 100) tracker.update(now, "uncertain");
+  assert.equal(tracker.metrics(20000).observedMs, beforeUncertain);
+
+  tracker.recordBlink(20000, 1200);
+  assert.equal(tracker.metrics(20000).suppressed, true);
+  assert.equal(tracker.shouldRemind(20000, "open"), false);
 });

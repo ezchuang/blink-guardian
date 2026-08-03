@@ -4,6 +4,8 @@
 
 偵測器會為不同臉部角度建立本次監測專用的開眼 baseline：`eyeBlink` 取最低三次平均，眼瞼幾何比例取最高三次平均。切換到新角度時會短暫暫停開眼計時並重新校正；回到已見過的角度則直接重用記憶體中的 profile。這些 profile 不會儲存到裝置。預設靈敏度為「標準」。
 
+提醒同時使用兩種訊號：連續開眼時間是單次安全網；60 秒有效眨眼移動窗則觀察 session 內的個人節奏。趨勢必須持續偏低且當下已一段時間未眨才提醒，長閉眼休息會暫時抑制趨勢提醒。歷史圖表另記錄最近一分鐘的平均閉眼時長，並以平滑曲線呈現。
+
 ## 本機開發
 
 需求：Node.js 22.13 以上。
@@ -26,7 +28,7 @@ npm test
 ## 專案結構
 
 - `public/blink-guardian.html`：主要 UI、提醒與歷史紀錄邏輯。
-- `public/blink-detector.js`：逐眼校正、角度調整、有效閉合與開眼暴露狀態機。
+- `public/blink-detector.js`：逐眼校正、角度調整、有效閉合、開眼暴露與移動窗趨勢狀態機。
 - `app/page.tsx`：將網站根路徑導向主要頁面。
 - `scripts/vinext.mjs`：跨 Windows／macOS／Linux 的 vinext 啟動器。
 - `.openai/hosting.json`：OpenAI Sites project linkage。

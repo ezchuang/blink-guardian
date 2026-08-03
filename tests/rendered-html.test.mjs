@@ -25,6 +25,10 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /眨眼靈敏度/);
     assert.match(html, /id="sensitivityRange"[^>]+max="6"[^>]+value="3"/);
     assert.doesNotMatch(html, /blinkGuardian\.sensitivity/);
+    assert.match(html, /BlinkTrendTracker/);
+    assert.match(html, /closureMs: currentClosureDuration/);
+    assert.match(html, /平均閉眼時長/);
+    assert.match(html, /TREND_REMINDER_COOLDOWN = 120000/);
     assert.match(html, /data-window="1440"/);
     assert.match(html, /HISTORY_MAX_AGE = 24 \* 60 \* 60 \* 1000/);
     assert.match(html, /localStorage\.setItem\(HISTORY_KEY/);

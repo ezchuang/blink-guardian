@@ -17,6 +17,7 @@
       --green-soft: #dceadf;
       --lime: #dce780;
       --coral: #ed765d;
+      --violet: #7969a7;
       --shadow: 0 24px 70px rgba(29, 42, 34, .12);
     }
 
@@ -110,8 +111,9 @@
     .chart-wrap { position: relative; width: 100%; min-height: 108px; cursor: pointer; }
     .chart-wrap canvas { display: block; width: 100%; height: 108px; }
     .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.5; pointer-events: none; }
-    .chart-note { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; color: var(--muted); font-size: 10px; }
+    .chart-note { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; margin-top: 6px; color: var(--muted); font-size: 10px; }
     .chart-note i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; background: var(--coral); }
+    .chart-note .duration-key i { width: 14px; height: 3px; border-radius: 4px; vertical-align: middle; background: var(--violet); }
     .window-switcher { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(23,33,28,.06); }
     .window-switcher button { min-width: 38px; border: 0; border-radius: 7px; background: transparent; padding: 6px 7px; color: var(--muted); cursor: pointer; font-size: 11px; }
     .window-switcher button.active { background: white; color: var(--ink); box-shadow: 0 2px 8px rgba(23,33,28,.1); font-weight: 720; }
@@ -150,6 +152,7 @@
     .dialog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
     .history-legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 11px; }
     .history-legend span::before { content: ""; display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 4px; background: var(--green); }
+    .history-legend .duration-key::before { background: var(--violet); }
     .history-legend .event-key::before { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
     .large-chart { position: relative; min-height: 350px; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: white; }
     .large-chart canvas { display: block; width: 100%; height: 330px; }
@@ -274,7 +277,7 @@
               <canvas id="compactChart" aria-hidden="true"></canvas>
               <div class="chart-empty" id="compactEmpty">開始監測後，每 30 秒留下<br>一筆頻率紀錄</div>
             </div>
-            <div class="chart-note"><span><i></i>提醒事件</span><span>僅存此裝置 · 最長 24hr</span></div>
+            <div class="chart-note"><span class="duration-key"><i></i>平均閉眼時長</span><span><i></i>提醒事件</span><span>僅存此裝置 · 最長 24hr</span></div>
           </div>
           <div class="settings">
             <div class="setting-row">
@@ -306,10 +309,10 @@
             <button type="button" data-window="720">12hr</button>
             <button type="button" data-window="1440">24hr</button>
           </div>
-          <div class="history-legend"><span>有效閉合頻率</span><span class="event-key">提醒時機</span></div>
+          <div class="history-legend"><span>有效閉合頻率</span><span class="duration-key">平均閉眼時長</span><span class="event-key">提醒時機</span></div>
         </div>
         <div class="large-chart">
-          <canvas id="largeChart" aria-label="有效閉合頻率與提醒事件圖表"></canvas>
+          <canvas id="largeChart" aria-label="有效閉合頻率、平均閉眼時長與提醒事件圖表"></canvas>
           <div class="chart-empty" id="largeEmpty">這個時間範圍內還沒有監測紀錄</div>
         </div>
         <div class="history-summary">
@@ -329,7 +332,7 @@
       <h2 id="howTitle">有感提醒，<br>沒有監視感。</h2>
       <div class="steps">
         <div class="step"><div><strong>影像留在瀏覽器</strong><p>鏡頭畫面不會上傳、錄影或儲存；模型只讀取眼睛閉合程度。</p></div></div>
-        <div class="step"><div><strong>計算眼睛暴露時間</strong><p>連續開眼約 10 秒時提醒；眨眼或持續閉眼都會清除計時，閉眼期間不會提醒。</p></div></div>
+        <div class="step"><div><strong>兼顧暴露時間與眨眼節奏</strong><p>連續開眼過久會直接提醒；最近一分鐘的有效眨眼持續低於個人節奏，而且當下又一段時間沒眨時，才會發出趨勢提醒。</p></div></div>
         <div class="step"><div><strong>每 20 分鐘看看遠方</strong><p>持續監測 20 分鐘後，也會提醒你看約 6 公尺外至少 20 秒。</p></div></div>
       </div>
     </section>
@@ -347,7 +350,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { AngleRobustBlinkDetector, OpenEyeExposureTracker } from "./blink-detector.js";
+    import { AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker } from "./blink-detector.js";
 
     const MP_VERSION = "0.10.35";
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
@@ -378,17 +381,20 @@
     let lastVideoTime = -1;
     let startedAt = 0;
     let blinks = [];
+    let closures = [];
     const DEFAULT_SENSITIVITY = 3;
     const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: DEFAULT_SENSITIVITY });
     const exposureTracker = new OpenEyeExposureTracker();
+    const blinkTrendTracker = new BlinkTrendTracker();
+    let currentEyeState = "uncertain";
     let faceLastSeen = 0;
     let lastReminderAt = 0;
+    let lastTrendReminderAt = 0;
     let soundOn = true;
     let audioContext = null;
     let nextBreakAt = 0;
     let breakTimer = null;
     let calibrationUntil = 0;
-    let rateStartedAt = 0;
     let inactiveAccumulated = 0;
     let hiddenStartedAt = 0;
     let historyWindowMinutes = 60;
@@ -397,6 +403,8 @@
     const HISTORY_KEY = "blinkGuardian.history.v1";
     const HISTORY_MAX_AGE = 24 * 60 * 60 * 1000;
     const HISTORY_SAMPLE_INTERVAL = 30000;
+    const OPEN_REMINDER_COOLDOWN = 60000;
+    const TREND_REMINDER_COOLDOWN = 120000;
     let history = loadHistory();
 
     function setStatus(label, title, hint, isLive = false) {
@@ -452,6 +460,13 @@
       return `${m}:${s}`;
     }
 
+    function currentClosureDuration(now) {
+      const cutoff = now - 60000;
+      closures = closures.filter((item) => item.t >= cutoff);
+      if (!closures.length) return null;
+      return Math.round(closures.reduce((sum, item) => sum + item.duration, 0) / closures.length);
+    }
+
     function loadHistory() {
       try {
         const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || "{}");
@@ -488,7 +503,8 @@
       if (!force && wallNow - lastHistorySampleAt < HISTORY_SAMPLE_INTERVAL) return;
       history.samples.push({
         t: wallNow,
-        rate: currentRate(now),
+        rate: Math.round(blinkTrendTracker.metrics(now).rate),
+        closureMs: currentClosureDuration(now),
         exposure: exposureTracker.openMs / 1000,
         total: blinks.length
       });
@@ -526,18 +542,49 @@
       return date.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
     }
 
+    function strokeSmoothLine(ctx, points, gapMs, color, width) {
+      const strokeSegment = (segment) => {
+        if (!segment.length) return;
+        ctx.beginPath();
+        ctx.moveTo(segment[0].x, segment[0].y);
+        for (let index = 1; index < segment.length - 1; index += 1) {
+          const point = segment[index];
+          const next = segment[index + 1];
+          ctx.quadraticCurveTo(point.x, point.y, (point.x + next.x) / 2, (point.y + next.y) / 2);
+        }
+        if (segment.length > 1) ctx.lineTo(segment.at(-1).x, segment.at(-1).y);
+        ctx.stroke();
+      };
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      let segment = [];
+      for (const point of points) {
+        if (!point || (segment.length && point.t - segment.at(-1).t > gapMs)) {
+          strokeSegment(segment);
+          segment = point ? [point] : [];
+        } else segment.push(point);
+      }
+      strokeSegment(segment);
+    }
+
     function drawChart(canvas, minutes, expanded = false) {
       const { ctx, width, height } = prepareCanvas(canvas);
       const data = chartData(minutes);
-      const padding = expanded ? { top: 20, right: 18, bottom: 34, left: 44 } : { top: 8, right: 5, bottom: 8, left: 5 };
+      const padding = expanded ? { top: 20, right: 48, bottom: 34, left: 44 } : { top: 8, right: 5, bottom: 8, left: 5 };
       const plotWidth = width - padding.left - padding.right;
       const plotHeight = height - padding.top - padding.bottom;
       if (plotWidth <= 0 || plotHeight <= 0) return data;
 
       const peak = Math.max(20, ...data.samples.map((item) => Math.min(40, item.rate)));
       const yMax = Math.ceil(peak / 5) * 5;
+      const durationValues = data.samples.map((item) => item.closureMs).filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
+      const durationPeak = durationValues[Math.floor(Math.max(0, durationValues.length - 1) * .9)] || 0;
+      const durationMax = Math.min(2000, Math.max(400, Math.ceil(durationPeak / 100) * 100));
       const x = (t) => padding.left + ((t - data.start) / (data.end - data.start)) * plotWidth;
       const y = (rate) => padding.top + plotHeight - (Math.min(yMax, rate) / yMax) * plotHeight;
+      const durationY = (duration) => padding.top + plotHeight - (Math.min(durationMax, duration) / durationMax) * plotHeight;
 
       if (expanded) {
         ctx.font = "11px system-ui, sans-serif";
@@ -557,10 +604,15 @@
           ctx.textAlign = i === 0 ? "left" : i === 4 ? "right" : "center";
           ctx.fillText(label, px, height - 10);
         }
+        ctx.fillStyle = "#7969a7";
+        ctx.textAlign = "right";
+        ctx.fillText(`${durationMax} ms`, width - 4, padding.top + 4);
+        ctx.fillText(`${Math.round(durationMax / 2)} ms`, width - 4, padding.top + plotHeight / 2 + 4);
+        ctx.fillText("0 ms", width - 4, padding.top + plotHeight + 4);
         ctx.textAlign = "left";
       }
 
-      for (const event of data.events.filter((item) => item.type === "blink" || item.type === "exposure" || item.type === "break")) {
+      for (const event of data.events.filter((item) => item.type === "blink" || item.type === "exposure" || item.type === "trend" || item.type === "break")) {
         const px = x(event.t);
         ctx.strokeStyle = "rgba(237,118,93,.4)";
         ctx.lineWidth = 1;
@@ -568,6 +620,15 @@
         ctx.fillStyle = "#ed765d";
         ctx.beginPath(); ctx.arc(px, padding.top + plotHeight - 2, expanded ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
       }
+
+      const durationPoints = data.samples.map((sample, index, samples) => {
+        if (!Number.isFinite(sample.closureMs)) return null;
+        const nearby = samples.slice(Math.max(0, index - 1), index + 2)
+          .filter((item) => Number.isFinite(item.closureMs) && Math.abs(item.t - sample.t) <= HISTORY_SAMPLE_INTERVAL * 1.5);
+        const smoothed = nearby.reduce((sum, item) => sum + item.closureMs, 0) / nearby.length;
+        return { t: sample.t, x: x(sample.t), y: durationY(smoothed) };
+      });
+      strokeSmoothLine(ctx, durationPoints, HISTORY_SAMPLE_INTERVAL * 2.5, "#7969a7", expanded ? 2.5 : 2);
 
       ctx.strokeStyle = "#12664f";
       ctx.lineWidth = expanded ? 2.5 : 2;
@@ -595,7 +656,7 @@
 
     function renderHistoryDetails(data) {
       const rates = data.samples.map((item) => item.rate).filter(Number.isFinite);
-      const blinkReminders = data.events.filter((item) => item.type === "blink" || item.type === "exposure");
+      const blinkReminders = data.events.filter((item) => item.type === "blink" || item.type === "exposure" || item.type === "trend");
       const breakReminders = data.events.filter((item) => item.type === "break");
       ui.historyAverage.textContent = rates.length ? `${Math.round(rates.reduce((sum, value) => sum + value, 0) / rates.length)} 次` : "—";
       ui.historyMinimum.textContent = rates.length ? `${Math.min(...rates)} 次` : "—";
@@ -613,7 +674,7 @@
       }
       for (const event of rows) {
         const time = new Date(event.t).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-        const type = event.type === "blink" || event.type === "exposure" ? "開眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
+        const type = event.type === "trend" ? "節奏提醒" : event.type === "blink" || event.type === "exposure" ? "開眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
         const row = document.createElement("div");
         const timeElement = document.createElement("time");
         const typeElement = document.createElement("strong");
@@ -646,42 +707,50 @@
       return Math.max(0, now - startedAt - inactiveAccumulated - currentHidden);
     }
 
-    function currentRate(now) {
-      const windowStart = now - 60000;
-      const recent = blinks.filter((time) => time >= windowStart);
-      const elapsed = Math.max(1, Math.min(60, (now - rateStartedAt) / 1000));
-      return Math.round(recent.length * 60 / elapsed);
-    }
-
     function updateStats(now) {
       if (!running || document.hidden) return;
       const elapsed = activeElapsed(now) / 1000;
-      const rate = currentRate(now);
+      const trend = blinkTrendTracker.metrics(now);
+      const rate = Math.round(trend.rate);
       const targetSeconds = Number(ui.target.value);
       const exposureSeconds = exposureTracker.openMs / 1000;
       ui.rate.textContent = exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
       ui.total.textContent = blinks.length;
-      ui.last.textContent = Number.isFinite(rate) ? Math.min(rate, 99) : "—";
+      ui.last.textContent = trend.observedMs >= 5000 ? Math.min(rate, 99) : "—";
       ui.time.textContent = formatTime(elapsed);
       ui.estimate.textContent = "";
       ui.ring.style.setProperty("--progress", `${Math.min(360, (exposureSeconds / targetSeconds) * 360)}deg`);
 
       const facePresent = now - faceLastSeen < 1800;
-      if (facePresent && exposureSeconds >= targetSeconds && now - lastReminderAt > 15000 && !ui.reminder.classList.contains("show")) {
-        showBlinkReminder(false, `連續開眼 ${targetSeconds} 秒`);
+      if (facePresent && exposureSeconds >= targetSeconds && now - lastReminderAt > OPEN_REMINDER_COOLDOWN && !ui.reminder.classList.contains("show")) {
+        showBlinkReminder(false, `連續開眼 ${targetSeconds} 秒`, "exposure");
+      } else if (
+        facePresent &&
+        blinkTrendTracker.shouldRemind(now, currentEyeState) &&
+        now - lastTrendReminderAt > TREND_REMINDER_COOLDOWN &&
+        now - lastReminderAt > 30000 &&
+        !ui.reminder.classList.contains("show")
+      ) {
+        showBlinkReminder(false, `近一分鐘約 ${rate} 次，低於個人節奏`, "trend");
       }
       if (now >= nextBreakAt && !breakTimer) showDistanceBreak();
       recordSample(now);
       drawHistoryCharts();
     }
 
-    function showBlinkReminder(test = false, reason = "") {
-      lastReminderAt = performance.now();
-      ui.reminderTitle.textContent = test ? "這是提醒預覽" : "讓眼睛喝口水";
-      ui.reminderCopy.textContent = "自然眨眼一次，或閉眼休息一下；閉眼期間不會繼續計時。";
+    function showBlinkReminder(test = false, reason = "", mode = "exposure") {
+      const now = performance.now();
+      if (!test) {
+        lastReminderAt = now;
+        if (mode === "trend") lastTrendReminderAt = now;
+      }
+      ui.reminderTitle.textContent = test ? "這是提醒預覽" : mode === "trend" ? "眨眼節奏慢下來了" : "讓眼睛喝口水";
+      ui.reminderCopy.textContent = mode === "trend"
+        ? "最近一分鐘的有效眨眼偏少。輕輕閉合眼睛，再自然張開。"
+        : "輕輕閉合眼睛，再自然張開；持續閉眼休息也會停止計時。";
       ui.dismiss.textContent = "稍後再說";
       ui.reminder.classList.add("show");
-      if (!test) recordEvent("exposure", "開眼提醒", reason);
+      if (!test) recordEvent(mode, mode === "trend" ? "節奏提醒" : "開眼提醒", reason);
       beep();
     }
 
@@ -740,14 +809,17 @@
         await ui.video.play();
         running = true;
         startedAt = performance.now();
-        rateStartedAt = startedAt;
         inactiveAccumulated = 0;
         hiddenStartedAt = 0;
         faceLastSeen = 0;
         blinks = [];
+        closures = [];
         blinkDetector.resetCalibration();
         exposureTracker.reset(startedAt);
+        blinkTrendTracker.reset(startedAt);
+        currentEyeState = "uncertain";
         lastReminderAt = -Infinity;
+        lastTrendReminderAt = -Infinity;
         nextBreakAt = startedAt + 20 * 60 * 1000;
         calibrationUntil = startedAt + 3000;
         lastHistorySampleAt = Date.now();
@@ -781,6 +853,8 @@
       ui.reminder.classList.remove("show");
       if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
       exposureTracker.reset();
+      blinkTrendTracker.reset();
+      currentEyeState = "uncertain";
       updateSensitivity(DEFAULT_SENSITIVITY);
       ui.start.textContent = "重新開始監測";
       setStatus("已停止", "鏡頭已關閉", "本次資料只存在記憶體中，重新開始時會清除。 ");
@@ -790,8 +864,10 @@
       return categories.find((item) => item.categoryName === name)?.score ?? 0;
     }
 
-    function registerBlink(now) {
+    function registerBlink(now, closureDuration) {
       blinks.push(now);
+      closures.push({ t: now, duration: closureDuration });
+      blinkTrendTracker.recordBlink(now, closureDuration);
     }
 
     function registerRest() {
@@ -815,6 +891,8 @@
         cancelAnimationFrame(animationId);
         blinkDetector.resetMotion();
         exposureTracker.update(now, "uncertain");
+        blinkTrendTracker.update(now, "uncertain");
+        currentEyeState = "uncertain";
         ui.reminder.classList.remove("show");
         if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
         setStatus("背景暫停", "目前沒有計數", "瀏覽器在背景會停止高頻影像處理；回到此頁後會自動重新校正。", false);
@@ -824,11 +902,12 @@
         inactiveAccumulated += hiddenDuration;
         nextBreakAt += hiddenDuration;
         hiddenStartedAt = 0;
-        rateStartedAt = now;
         lastReminderAt = now;
         faceLastSeen = 0;
         blinkDetector.resetCalibration();
         exposureTracker.reset(now);
+        blinkTrendTracker.resetWindow(now);
+        currentEyeState = "uncertain";
         calibrationUntil = now + 1500;
         lastVideoTime = -1;
         lastHistorySampleAt = Date.now();
@@ -891,8 +970,10 @@
               setThresholdMarker(detection.closeThreshold);
               if (detection.poseChanged) exposureTracker.reset(now);
               exposureTracker.update(now, detection.state);
+              blinkTrendTracker.update(now, detection.state);
+              currentEyeState = detection.state;
               if (detection.closureStarted) registerRest();
-              if (detection.closureEnded) registerBlink(now);
+              if (detection.closureEnded) registerBlink(now, detection.closureDuration);
               if (detection.recalibrating) {
                 setStatus("角度校正", "自然張開眼睛", "正在建立目前角度的開眼基準，約半秒後恢復。", true);
               } else if (now - faceLastSeen < 500) {
@@ -902,6 +983,8 @@
           } else if (now - faceLastSeen > 1200) {
             blinkDetector.resetMotion();
             exposureTracker.update(now, "uncertain");
+            blinkTrendTracker.update(now, "uncertain");
+            currentEyeState = "uncertain";
             ui.left.style.height = "0%";
             ui.right.style.height = "0%";
             setStatus("找不到臉", "回到鏡頭畫面中", "讓臉部完整入鏡，避免背光或太暗的環境。", false);

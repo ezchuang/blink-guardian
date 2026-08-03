@@ -337,3 +337,109 @@ export class OpenEyeExposureTracker {
     return this.openMs;
   }
 }
+
+export class BlinkTrendTracker {
+  constructor({ windowMs = 60000, minimumObservedMs = 45000 } = {}) {
+    this.windowMs = windowMs;
+    this.minimumObservedMs = minimumObservedMs;
+    this.reset();
+  }
+
+  reset(now = null) {
+    this.blinks = [];
+    this.observed = [];
+    this.baselineRates = [];
+    this.lastAt = now;
+    this.lastBaselineSampleAt = -Infinity;
+    this.lastBlinkAt = -Infinity;
+    this.lowSince = 0;
+    this.suppressUntil = 0;
+  }
+
+  resetWindow(now = null) {
+    this.blinks = [];
+    this.observed = [];
+    this.lastAt = now;
+    this.lastBlinkAt = -Infinity;
+    this.lowSince = 0;
+  }
+
+  addObserved(start, end) {
+    if (end <= start) return;
+    const previous = this.observed.at(-1);
+    if (previous && start - previous.end <= 250) previous.end = end;
+    else this.observed.push({ start, end });
+  }
+
+  prune(now) {
+    const cutoff = now - this.windowMs;
+    while (this.blinks.length && this.blinks[0] < cutoff) this.blinks.shift();
+    while (this.observed.length && this.observed[0].end < cutoff) this.observed.shift();
+  }
+
+  metrics(now) {
+    this.prune(now);
+    const cutoff = now - this.windowMs;
+    const observedMs = this.observed.reduce((sum, segment) => (
+      sum + Math.max(0, segment.end - Math.max(cutoff, segment.start))
+    ), 0);
+    const rate = observedMs >= 5000 ? this.blinks.length * 60000 / observedMs : 0;
+    const sortedBaseline = [...this.baselineRates].sort((a, b) => a - b);
+    const baseline = sortedBaseline.length
+      ? sortedBaseline[Math.floor(sortedBaseline.length / 2)]
+      : null;
+    const threshold = baseline === null ? null : clamp(baseline * .55, 6, 12);
+    return {
+      observedMs,
+      rate,
+      baseline,
+      threshold,
+      ready: this.baselineRates.length >= 6,
+      lowDurationMs: this.lowSince ? now - this.lowSince : 0,
+      sinceLastBlinkMs: now - this.lastBlinkAt,
+      suppressed: now < this.suppressUntil
+    };
+  }
+
+  update(now, state) {
+    const delta = this.lastAt === null ? 0 : Math.min(250, Math.max(0, now - this.lastAt));
+    if (state === "open" || state === "resting") this.addObserved(now - delta, now);
+    this.lastAt = now;
+
+    let metrics = this.metrics(now);
+    if (
+      metrics.observedMs >= this.minimumObservedMs &&
+      this.baselineRates.length < 18 &&
+      now - this.lastBaselineSampleAt >= 10000
+    ) {
+      this.baselineRates.push(metrics.rate);
+      this.lastBaselineSampleAt = now;
+      metrics = this.metrics(now);
+    }
+
+    const low = metrics.ready && metrics.observedMs >= this.minimumObservedMs && metrics.rate < metrics.threshold;
+    if (low) this.lowSince ||= now;
+    else this.lowSince = 0;
+    return this.metrics(now);
+  }
+
+  recordBlink(now, closureDuration = 0) {
+    this.blinks.push(now);
+    this.lastBlinkAt = now;
+    if (closureDuration >= 800) {
+      this.suppressUntil = Math.max(this.suppressUntil, now + 30000);
+      this.lowSince = 0;
+    }
+    this.prune(now);
+  }
+
+  shouldRemind(now, state = "open") {
+    const metrics = this.metrics(now);
+    return state === "open" &&
+      metrics.ready &&
+      metrics.observedMs >= this.minimumObservedMs &&
+      metrics.lowDurationMs >= 25000 &&
+      metrics.sinceLastBlinkMs >= 8000 &&
+      !metrics.suppressed;
+  }
+}
