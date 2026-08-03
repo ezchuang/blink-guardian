@@ -84,8 +84,9 @@
     .camera-copy strong { display: block; font-size: 20px; letter-spacing: -.02em; }
     .camera-copy span { display: block; max-width: 400px; margin-top: 5px; color: rgba(255,255,255,.68); font-size: 13px; line-height: 1.45; }
     .eye-levels { display: flex; gap: 6px; align-items: flex-end; }
-    .eye-meter { width: 7px; height: 48px; background: rgba(255,255,255,.18); border-radius: 9px; overflow: hidden; display: flex; align-items: flex-end; }
+    .eye-meter { --threshold: 30%; width: 7px; height: 48px; background: rgba(255,255,255,.18); border-radius: 9px; overflow: hidden; display: flex; align-items: flex-end; position: relative; }
     .eye-meter i { width: 100%; height: 0%; background: var(--lime); border-radius: inherit; transition: height .06s linear; }
+    .eye-meter::after { content: ""; position: absolute; z-index: 1; left: 0; right: 0; bottom: var(--threshold); height: 1px; background: white; box-shadow: 0 0 0 1px rgba(23,33,28,.3); }
 
     .stats { padding: 26px; display: flex; flex-direction: column; }
     .stats-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
@@ -243,7 +244,7 @@
           </div>
           <div class="camera-bottom">
             <div class="camera-copy"><strong id="cameraTitle">準備好就開始</strong><span id="cameraHint">請坐在光線均勻的位置，讓完整臉部出現在畫面中。</span></div>
-            <div class="eye-levels" aria-label="左右眼閉合程度"><span class="eye-meter"><i id="leftEyeMeter"></i></span><span class="eye-meter"><i id="rightEyeMeter"></i></span></div>
+            <div class="eye-levels" aria-label="左右眼閉合程度，白色短線是目前判定門檻" title="白色短線是目前判定門檻"><span class="eye-meter"><i id="leftEyeMeter"></i></span><span class="eye-meter"><i id="rightEyeMeter"></i></span></div>
           </div>
 
           <div class="reminder" id="reminder" role="alertdialog" aria-modal="true" aria-labelledby="reminderTitle">
@@ -279,6 +280,10 @@
             <div class="setting-row">
               <label for="targetRange">提醒目標</label>
               <div class="target-control"><input id="targetRange" type="range" min="8" max="20" value="12" aria-describedby="targetValue" /><strong id="targetValue">12 次</strong></div>
+            </div>
+            <div class="setting-row">
+              <label for="sensitivityRange">眨眼靈敏度</label>
+              <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="5" value="4" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">靈敏</strong></div>
             </div>
             <div class="setting-row"><span>提示音</span><button class="toggle" id="soundToggle" type="button" aria-label="切換提示音" aria-pressed="true"></button></div>
             <button class="primary" id="startButton" type="button">開啟鏡頭並開始</button>
@@ -355,6 +360,7 @@
       title: $("cameraTitle"), hint: $("cameraHint"), left: $("leftEyeMeter"), right: $("rightEyeMeter"),
       rate: $("rateValue"), ring: $("rateRing"), total: $("totalBlinks"), last: $("lastBlink"),
       time: $("sessionTime"), estimate: $("estimateLabel"), target: $("targetRange"), targetValue: $("targetValue"),
+      sensitivity: $("sensitivityRange"), sensitivityValue: $("sensitivityValue"),
       sound: $("soundToggle"), start: $("startButton"), reminder: $("reminder"), reminderTitle: $("reminderTitle"),
       reminderCopy: $("reminderCopy"), dismiss: $("dismissReminder"), test: $("testButton"), toast: $("toast"),
       compactChart: $("compactChart"), compactEmpty: $("compactEmpty"), compactChartWrap: $("compactChartWrap"),
@@ -373,7 +379,12 @@
     let startedAt = 0;
     let lastBlinkAt = 0;
     let blinks = [];
-    const blinkDetector = new AngleRobustBlinkDetector();
+    const SENSITIVITY_KEY = "blinkGuardian.sensitivity.v1";
+    const savedSensitivity = (() => {
+      try { return Number(localStorage.getItem(SENSITIVITY_KEY)) || 4; }
+      catch { return 4; }
+    })();
+    const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: savedSensitivity });
     let faceLastSeen = 0;
     let lastReminderAt = 0;
     let soundOn = true;
@@ -405,6 +416,20 @@
       ui.toast.classList.add("show");
       clearTimeout(toast.timer);
       toast.timer = setTimeout(() => ui.toast.classList.remove("show"), 3000);
+    }
+
+    function updateSensitivity(level, persist = true) {
+      const labels = ["保守", "較保守", "標準", "靈敏", "最靈敏"];
+      const value = Math.min(5, Math.max(1, Number(level) || 4));
+      blinkDetector.setSensitivity(value);
+      ui.sensitivity.value = String(value);
+      ui.sensitivityValue.textContent = labels[value - 1];
+      const marker = `${Math.round(blinkDetector.thresholds(false).close * 100)}%`;
+      ui.left.parentElement.style.setProperty("--threshold", marker);
+      ui.right.parentElement.style.setProperty("--threshold", marker);
+      if (persist) {
+        try { localStorage.setItem(SENSITIVITY_KEY, String(value)); } catch {}
+      }
     }
 
     function beep() {
@@ -903,6 +928,8 @@
       if (soundOn) { beep(); toast("提示音已開啟。 "); } else toast("提示音已關閉。 ");
     });
     ui.target.addEventListener("input", () => { ui.targetValue.textContent = `${ui.target.value} 次`; });
+    ui.sensitivity.addEventListener("input", () => updateSensitivity(ui.sensitivity.value));
+    ui.sensitivity.addEventListener("change", () => toast(`眨眼靈敏度已調整為「${ui.sensitivityValue.textContent}」。`));
     ui.expandChart.addEventListener("click", openHistory);
     ui.compactChartWrap.addEventListener("click", openHistory);
     ui.compactChartWrap.addEventListener("keydown", (event) => {
@@ -921,6 +948,7 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("resize", () => drawHistoryCharts(true));
     window.addEventListener("pagehide", () => { stream?.getTracks().forEach((track) => track.stop()); landmarker?.close?.(); });
+    updateSensitivity(savedSensitivity, false);
     drawHistoryCharts(true);
   </script>
 </body>

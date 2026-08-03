@@ -20,6 +20,8 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /眨眼節奏紀錄/);
     assert.match(html, /AngleRobustBlinkDetector/);
     assert.match(html, /會依臉部角度調整左右眼的判定權重/);
+    assert.match(html, /眨眼靈敏度/);
+    assert.match(html, /blinkGuardian\.sensitivity\.v1/);
     assert.match(html, /data-window="1440"/);
     assert.match(html, /HISTORY_MAX_AGE = 24 \* 60 \* 60 \* 1000/);
     assert.match(html, /localStorage\.setItem\(HISTORY_KEY/);

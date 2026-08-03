@@ -28,8 +28,25 @@ export function eyeVisibilityWeights(landmarks, aspectRatio = 1) {
 }
 
 export class AngleRobustBlinkDetector {
-  constructor() {
+  constructor({ sensitivity = 4 } = {}) {
+    this.setSensitivity(sensitivity);
     this.resetCalibration();
+  }
+
+  setSensitivity(level) {
+    this.sensitivityLevel = clamp(Math.round(Number(level) || 3), 1, 5);
+    this.sensitivity = (this.sensitivityLevel - 1) / 4;
+  }
+
+  thresholds(angled = false) {
+    const close = (angled ? .37 : .39) - this.sensitivity * .12;
+    return {
+      close,
+      minEye: (angled ? .08 : .2) - this.sensitivity * .05,
+      strongEye: (angled ? .48 : .46) - this.sensitivity * .08,
+      open: .13 + this.sensitivity * .04,
+      openEye: .22 + this.sensitivity * .06
+    };
   }
 
   resetCalibration() {
@@ -56,6 +73,7 @@ export class AngleRobustBlinkDetector {
     this.closeCandidateAt = 0;
     this.closedAt = 0;
     this.lastBlinkAt = -Infinity;
+    this.fastClosure = false;
     this.smoothLeft = null;
     this.smoothRight = null;
   }
@@ -75,20 +93,35 @@ export class AngleRobustBlinkDetector {
 
     const leftLevel = this.normalizedClosure(this.smoothLeft, this.openLeft);
     const rightLevel = this.normalizedClosure(this.smoothRight, this.openRight);
+    const rawLeftLevel = this.normalizedClosure(left, this.openLeft);
+    const rawRightLevel = this.normalizedClosure(right, this.openRight);
     const weights = eyeVisibilityWeights(landmarks, aspectRatio);
     const combined = leftLevel * weights.left + rightLevel * weights.right;
+    const rawCombined = rawLeftLevel * weights.left + rawRightLevel * weights.right;
     const angled = weights.asymmetry >= .1;
+    const threshold = this.thresholds(angled);
     const closeSignal = angled
-      ? combined >= .32 && Math.max(leftLevel, rightLevel) >= .4 && Math.min(leftLevel, rightLevel) >= .06
-      : combined >= .34 && Math.min(leftLevel, rightLevel) >= .16;
-    const openSignal = combined <= .13 && Math.max(leftLevel, rightLevel) <= .22;
+      ? combined >= threshold.close && Math.max(leftLevel, rightLevel) >= threshold.strongEye && Math.min(leftLevel, rightLevel) >= threshold.minEye
+      : combined >= threshold.close && Math.min(leftLevel, rightLevel) >= threshold.minEye;
+    const fastCloseSignal = angled
+      ? rawCombined >= threshold.close + .16 && Math.max(rawLeftLevel, rawRightLevel) >= threshold.strongEye + .18 && Math.min(rawLeftLevel, rawRightLevel) >= threshold.minEye
+      : rawCombined >= threshold.close + .16 && Math.min(rawLeftLevel, rawRightLevel) >= threshold.minEye + .18;
+    const rawOpenSignal = rawCombined <= threshold.open && Math.max(rawLeftLevel, rawRightLevel) <= threshold.openEye;
+    const openSignal = (combined <= threshold.open && Math.max(leftLevel, rightLevel) <= threshold.openEye)
+      || (this.fastClosure && rawOpenSignal);
     let blink = false;
 
     if (!this.closed) {
-      if (closeSignal) {
+      if (fastCloseSignal) {
+        this.closed = true;
+        this.fastClosure = true;
+        this.closedAt = now;
+        this.closeCandidateAt = 0;
+      } else if (closeSignal) {
         this.closeCandidateAt ||= now;
         if (now - this.closeCandidateAt >= 28) {
           this.closed = true;
+          this.fastClosure = false;
           this.closedAt = this.closeCandidateAt;
         }
       } else {
@@ -96,17 +129,20 @@ export class AngleRobustBlinkDetector {
       }
     } else if (openSignal) {
       const duration = now - this.closedAt;
-      blink = duration >= 55 && duration <= 1200 && now - this.lastBlinkAt >= 180;
+      const minimumDuration = this.fastClosure ? 20 : 55;
+      blink = duration >= minimumDuration && duration <= 1200 && now - this.lastBlinkAt >= 150;
       if (blink) this.lastBlinkAt = now;
       this.closed = false;
+      this.fastClosure = false;
       this.closeCandidateAt = 0;
       this.closedAt = 0;
     } else if (now - this.closedAt > 1200) {
       this.closed = false;
+      this.fastClosure = false;
       this.closeCandidateAt = 0;
       this.closedAt = 0;
     }
 
-    return { blink, leftLevel, rightLevel, combined, angled };
+    return { blink, leftLevel, rightLevel, combined, angled, closeThreshold: threshold.close };
   }
 }

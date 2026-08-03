@@ -55,12 +55,25 @@ test("does not count a frontal wink as a blink", () => {
   assert.equal(result.blink, false);
 });
 
-test("ignores a one-frame closure spike", () => {
+test("counts a high-confidence one-frame fast blink", () => {
   const detector = calibratedDetector();
   detector.update({ now: 0, left: .05, right: .05, landmarks: landmarks() });
   detector.update({ now: 33, left: .9, right: .9, landmarks: landmarks() });
-  detector.update({ now: 66, left: .05, right: .05, landmarks: landmarks() });
-  detector.update({ now: 99, left: .05, right: .05, landmarks: landmarks() });
-  const result = detector.update({ now: 132, left: .05, right: .05, landmarks: landmarks() });
+  const result = detector.update({ now: 66, left: .05, right: .05, landmarks: landmarks() });
+  assert.equal(result.blink, true);
+});
+
+test("ignores an asymmetric one-frame score spike", () => {
+  const detector = calibratedDetector();
+  detector.update({ now: 0, left: .05, right: .05, landmarks: landmarks() });
+  detector.update({ now: 33, left: .9, right: .08, landmarks: landmarks() });
+  const result = detector.update({ now: 66, left: .05, right: .05, landmarks: landmarks() });
   assert.equal(result.blink, false);
+});
+
+test("lowers the close threshold when sensitivity increases", () => {
+  const detector = new AngleRobustBlinkDetector({ sensitivity: 1 });
+  const conservative = detector.thresholds(false).close;
+  detector.setSensitivity(5);
+  assert.ok(detector.thresholds(false).close < conservative);
 });
