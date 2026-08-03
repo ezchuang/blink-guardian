@@ -9,7 +9,7 @@
     "dev": "node scripts/vinext.mjs dev",
     "build": "node scripts/vinext.mjs build",
     "start": "node scripts/vinext.mjs start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/blink-detector.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

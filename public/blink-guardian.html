@@ -342,6 +342,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
+    import { AngleRobustBlinkDetector } from "./blink-detector.js";
+
     const MP_VERSION = "0.10.35";
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
     const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -371,8 +373,7 @@
     let startedAt = 0;
     let lastBlinkAt = 0;
     let blinks = [];
-    let eyeClosed = false;
-    let closedAt = 0;
+    const blinkDetector = new AngleRobustBlinkDetector();
     let faceLastSeen = 0;
     let lastReminderAt = 0;
     let soundOn = true;
@@ -380,9 +381,6 @@
     let nextBreakAt = 0;
     let breakTimer = null;
     let calibrationUntil = 0;
-    let calibrationScores = [];
-    let closeThreshold = .58;
-    let openThreshold = .34;
     let reminderBlinkGoal = 0;
     let rateStartedAt = 0;
     let inactiveAccumulated = 0;
@@ -740,11 +738,10 @@
         lastBlinkAt = startedAt;
         faceLastSeen = 0;
         blinks = [];
-        eyeClosed = false;
+        blinkDetector.resetCalibration();
         lastReminderAt = startedAt;
         nextBreakAt = startedAt + 20 * 60 * 1000;
         calibrationUntil = startedAt + 3000;
-        calibrationScores = [];
         lastHistorySampleAt = Date.now();
         ui.panel.classList.add("live");
         ui.start.disabled = false;
@@ -783,39 +780,25 @@
       return categories.find((item) => item.categoryName === name)?.score ?? 0;
     }
 
-    function countBlink(now, left, right) {
-      const both = (left + right) / 2;
-      const perEyeThreshold = Math.max(.2, closeThreshold - .12);
-      if (!eyeClosed && both >= closeThreshold && left >= perEyeThreshold && right >= perEyeThreshold) {
-        eyeClosed = true;
-        closedAt = now;
-      } else if (eyeClosed && both <= openThreshold) {
-        const duration = now - closedAt;
-        eyeClosed = false;
-        if (duration >= 55 && duration <= 1200) {
-          blinks.push(now);
-          lastBlinkAt = now;
-          if (ui.reminder.classList.contains("show") && !breakTimer && reminderBlinkGoal) {
-            const remaining = Math.max(0, reminderBlinkGoal - blinks.length);
-            if (remaining === 0) {
-              ui.reminder.classList.remove("show");
-              reminderBlinkGoal = 0;
-              toast("很好，3 次完整眨眼完成。 ");
-            } else {
-              ui.reminderCopy.textContent = `很好，再完整眨眼 ${remaining} 次。`;
-            }
-          }
+    function registerBlink(now) {
+      blinks.push(now);
+      lastBlinkAt = now;
+      if (ui.reminder.classList.contains("show") && !breakTimer && reminderBlinkGoal) {
+        const remaining = Math.max(0, reminderBlinkGoal - blinks.length);
+        if (remaining === 0) {
+          ui.reminder.classList.remove("show");
+          reminderBlinkGoal = 0;
+          toast("很好，3 次完整眨眼完成。 ");
+        } else {
+          ui.reminderCopy.textContent = `很好，再完整眨眼 ${remaining} 次。`;
         }
       }
     }
 
     function finishCalibration() {
-      const sorted = calibrationScores.sort((a,b) => a - b);
-      const openBase = sorted[Math.floor(sorted.length * .25)] ?? .05;
-      closeThreshold = Math.min(.62, Math.max(.36, openBase + .3));
-      openThreshold = Math.min(.38, Math.max(.18, openBase + .14));
+      blinkDetector.finishCalibration();
       lastBlinkAt = performance.now();
-      setStatus("監測中", "保持自然就好", "偵測到太久未眨眼時，這裡會提醒你。", true);
+      setStatus("監測中", "保持自然就好", "會依臉部角度調整左右眼的判定權重。", true);
     }
 
     function handleVisibilityChange() {
@@ -825,7 +808,7 @@
         recordSample(now, true);
         hiddenStartedAt = now;
         cancelAnimationFrame(animationId);
-        eyeClosed = false;
+        blinkDetector.resetMotion();
         ui.reminder.classList.remove("show");
         if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
         setStatus("背景暫停", "目前沒有計數", "瀏覽器在背景會停止高頻影像處理；回到此頁後會自動重新校正。", false);
@@ -839,9 +822,8 @@
         lastBlinkAt = now;
         lastReminderAt = now;
         faceLastSeen = 0;
-        eyeClosed = false;
+        blinkDetector.resetCalibration();
         calibrationUntil = now + 1500;
-        calibrationScores = [];
         lastVideoTime = -1;
         lastHistorySampleAt = Date.now();
         setStatus("重新校正", "自然看著螢幕", "約 2 秒後恢復計數；背景期間會在圖表中保留空白。", true);
@@ -878,22 +860,30 @@
         try {
           const result = landmarker.detectForVideo(ui.video, now);
           const categories = result.faceBlendshapes?.[0]?.categories;
+          const landmarks = result.faceLandmarks?.[0];
           if (categories?.length) {
             faceLastSeen = now;
             const left = blendScore(categories, "eyeBlinkLeft");
             const right = blendScore(categories, "eyeBlinkRight");
-            ui.left.style.height = `${Math.round(left * 100)}%`;
-            ui.right.style.height = `${Math.round(right * 100)}%`;
             if (now < calibrationUntil) {
-              calibrationScores.push((left + right) / 2);
+              blinkDetector.addCalibrationFrame(left, right);
+              ui.left.style.height = `${Math.round(left * 100)}%`;
+              ui.right.style.height = `${Math.round(right * 100)}%`;
               const seconds = Math.max(1, Math.ceil((calibrationUntil - now) / 1000));
               ui.status.textContent = `校正 ${seconds} 秒`;
             } else {
               if (calibrationUntil !== 0) { calibrationUntil = 0; finishCalibration(); }
-              countBlink(now, left, right);
-              if (now - faceLastSeen < 500) setStatus("監測中", "保持自然就好", "偵測到太久未眨眼時，這裡會提醒你。", true);
+              const detection = blinkDetector.update({
+                now, left, right, landmarks,
+                aspectRatio: ui.video.videoWidth / Math.max(1, ui.video.videoHeight)
+              });
+              ui.left.style.height = `${Math.round(detection.leftLevel * 100)}%`;
+              ui.right.style.height = `${Math.round(detection.rightLevel * 100)}%`;
+              if (detection.blink) registerBlink(now);
+              if (now - faceLastSeen < 500) setStatus("監測中", "保持自然就好", "會依臉部角度調整左右眼的判定權重。", true);
             }
           } else if (now - faceLastSeen > 1200) {
+            blinkDetector.resetMotion();
             ui.left.style.height = "0%";
             ui.right.style.height = "0%";
             setStatus("找不到臉", "回到鏡頭畫面中", "讓臉部完整入鏡，避免背光或太暗的環境。", false);
