@@ -1,9 +1,10 @@
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
-function percentile(values, ratio, fallback = .05) {
+function extremeMean(values, count, highest, fallback) {
   if (!values.length) return fallback;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) * ratio)] ?? fallback;
+  const sorted = [...values].sort((a, b) => highest ? b - a : a - b);
+  const selected = sorted.slice(0, Math.min(count, sorted.length));
+  return selected.reduce((sum, value) => sum + value, 0) / selected.length;
 }
 
 function landmarkDistance(landmarks, first, second, aspectRatio) {
@@ -27,14 +28,34 @@ export function eyeVisibilityWeights(landmarks, aspectRatio = 1) {
   };
 }
 
+export function poseProfileKey(landmarks, aspectRatio = 1) {
+  const leftWidth = landmarkDistance(landmarks, 362, 263, aspectRatio);
+  const rightWidth = landmarkDistance(landmarks, 33, 133, aspectRatio);
+  const totalWidth = leftWidth + rightWidth;
+  const nose = landmarks?.[1];
+  const forehead = landmarks?.[10];
+  const chin = landmarks?.[152];
+  const leftOuter = landmarks?.[362];
+  const rightOuter = landmarks?.[33];
+  if (totalWidth < .001 || !nose || !forehead || !chin || !leftOuter || !rightOuter) return "neutral";
+
+  const signedYaw = (leftWidth - rightWidth) / totalWidth;
+  const faceHeight = Math.max(.001, Math.abs(chin.y - forehead.y));
+  const eyeLine = (leftOuter.y + rightOuter.y) / 2;
+  const pitch = (nose.y - eyeLine) / faceHeight;
+  const yawBucket = Math.round(clamp(signedYaw, -.5, .5) / .12);
+  const pitchBucket = Math.round(clamp(pitch, -.4, .6) / .08);
+  return `${yawBucket}:${pitchBucket}`;
+}
+
 export class AngleRobustBlinkDetector {
-  constructor({ sensitivity = 5 } = {}) {
+  constructor({ sensitivity = 3 } = {}) {
     this.setSensitivity(sensitivity);
     this.resetCalibration();
   }
 
   setSensitivity(level) {
-    this.sensitivityLevel = clamp(Math.round(Number(level) || 5), 1, 6);
+    this.sensitivityLevel = clamp(Math.round(Number(level) || 3), 1, 6);
     this.sensitivity = (this.sensitivityLevel - 1) / 5;
   }
 
@@ -56,6 +77,12 @@ export class AngleRobustBlinkDetector {
     this.openRight = .05;
     this.openLeftEar = null;
     this.openRightEar = null;
+    this.poseProfiles = new Map();
+    this.calibrationPoseKeys = [];
+    this.activePoseKey = null;
+    this.poseCandidateKey = null;
+    this.poseCandidateFrames = 0;
+    this.poseSamples = null;
     this.resetMotion();
   }
 
@@ -65,14 +92,82 @@ export class AngleRobustBlinkDetector {
     const geometry = eyeGeometry(landmarks, aspectRatio);
     if (geometry.leftEar) this.calibrationLeftEar.push(geometry.leftEar);
     if (geometry.rightEar) this.calibrationRightEar.push(geometry.rightEar);
+    this.calibrationPoseKeys.push(poseProfileKey(landmarks, aspectRatio));
   }
 
   finishCalibration() {
-    this.openLeft = clamp(percentile(this.calibrationLeft, .25), .01, .32);
-    this.openRight = clamp(percentile(this.calibrationRight, .25), .01, .32);
-    this.openLeftEar = percentile(this.calibrationLeftEar, .7, 0) || null;
-    this.openRightEar = percentile(this.calibrationRightEar, .7, 0) || null;
+    const profile = this.profileFromSamples({
+      left: this.calibrationLeft,
+      right: this.calibrationRight,
+      leftEar: this.calibrationLeftEar,
+      rightEar: this.calibrationRightEar
+    });
+    const counts = new Map();
+    for (const key of this.calibrationPoseKeys) counts.set(key, (counts.get(key) || 0) + 1);
+    this.activePoseKey = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "neutral";
+    this.poseProfiles.set(this.activePoseKey, profile);
+    this.loadProfile(profile);
     this.resetMotion();
+  }
+
+  profileFromSamples(samples) {
+    return {
+      openLeft: clamp(extremeMean(samples.left, 3, false, .05), .01, .4),
+      openRight: clamp(extremeMean(samples.right, 3, false, .05), .01, .4),
+      openLeftEar: extremeMean(samples.leftEar, 3, true, 0) || null,
+      openRightEar: extremeMean(samples.rightEar, 3, true, 0) || null
+    };
+  }
+
+  loadProfile(profile) {
+    this.openLeft = profile.openLeft;
+    this.openRight = profile.openRight;
+    this.openLeftEar = profile.openLeftEar;
+    this.openRightEar = profile.openRightEar;
+  }
+
+  updatePoseProfile(key, left, right, geometry) {
+    let poseChanged = false;
+    if (!this.activePoseKey) this.activePoseKey = key;
+    if (key !== this.activePoseKey) {
+      if (key === this.poseCandidateKey) this.poseCandidateFrames += 1;
+      else {
+        this.poseCandidateKey = key;
+        this.poseCandidateFrames = 1;
+      }
+      if (this.poseCandidateFrames >= 5) {
+        this.activePoseKey = key;
+        this.poseCandidateKey = null;
+        this.poseCandidateFrames = 0;
+        this.resetMotion();
+        poseChanged = true;
+        const cached = this.poseProfiles.get(key);
+        if (cached) {
+          this.loadProfile(cached);
+          this.poseSamples = null;
+        } else {
+          this.poseSamples = { left: [], right: [], leftEar: [], rightEar: [] };
+        }
+      }
+    } else {
+      this.poseCandidateKey = null;
+      this.poseCandidateFrames = 0;
+    }
+
+    if (this.poseSamples) {
+      this.poseSamples.left.push(clamp(left));
+      this.poseSamples.right.push(clamp(right));
+      if (geometry.leftEar) this.poseSamples.leftEar.push(geometry.leftEar);
+      if (geometry.rightEar) this.poseSamples.rightEar.push(geometry.rightEar);
+      if (this.poseSamples.left.length >= 12) {
+        const profile = this.profileFromSamples(this.poseSamples);
+        this.poseProfiles.set(this.activePoseKey, profile);
+        this.loadProfile(profile);
+        this.poseSamples = null;
+        this.resetMotion();
+      }
+    }
+    return { poseChanged, recalibrating: Boolean(this.poseSamples) };
   }
 
   resetMotion() {
@@ -100,6 +195,28 @@ export class AngleRobustBlinkDetector {
     this.smoothRight = this.smoothRight === null ? right : this.smoothRight * .55 + right * .45;
 
     const geometry = eyeGeometry(landmarks, aspectRatio);
+    const pose = this.updatePoseProfile(poseProfileKey(landmarks, aspectRatio), left, right, geometry);
+    if (pose.recalibrating) {
+      return {
+        blink: false,
+        closureStarted: false,
+        closureEnded: false,
+        closureDuration: 0,
+        state: "uncertain",
+        openness: 0,
+        leftLevel: 0,
+        rightLevel: 0,
+        combined: 0,
+        angled: false,
+        closeThreshold: this.thresholds(false).close,
+        poseChanged: pose.poseChanged,
+        recalibrating: true
+      };
+    }
+    if (this.smoothLeft === null) {
+      this.smoothLeft = left;
+      this.smoothRight = right;
+    }
     const leftGeometryLevel = this.geometryClosure(geometry.leftEar, this.openLeftEar);
     const rightGeometryLevel = this.geometryClosure(geometry.rightEar, this.openRightEar);
     const leftLevel = Math.max(this.normalizedBlendClosure(this.smoothLeft, this.openLeft), leftGeometryLevel);
@@ -161,6 +278,13 @@ export class AngleRobustBlinkDetector {
       if (rightLevel < .06) this.openRight = this.openRight * .997 + this.smoothRight * .003;
       if (leftGeometryLevel < .06 && geometry.leftEar && this.openLeftEar) this.openLeftEar = this.openLeftEar * .997 + geometry.leftEar * .003;
       if (rightGeometryLevel < .06 && geometry.rightEar && this.openRightEar) this.openRightEar = this.openRightEar * .997 + geometry.rightEar * .003;
+      const profile = this.poseProfiles.get(this.activePoseKey);
+      if (profile) Object.assign(profile, {
+        openLeft: this.openLeft,
+        openRight: this.openRight,
+        openLeftEar: this.openLeftEar,
+        openRightEar: this.openRightEar
+      });
     }
 
     return {
@@ -174,7 +298,9 @@ export class AngleRobustBlinkDetector {
       rightLevel,
       combined,
       angled,
-      closeThreshold: threshold.close
+      closeThreshold: threshold.close,
+      poseChanged: pose.poseChanged,
+      recalibrating: false
     };
   }
 }

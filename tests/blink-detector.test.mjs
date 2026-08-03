@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AngleRobustBlinkDetector, OpenEyeExposureTracker, eyeVisibilityWeights } from "../public/blink-detector.js";
+import { AngleRobustBlinkDetector, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../public/blink-detector.js";
 
-function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1) {
+function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1, noseY = .48) {
   const points = Array.from({ length: 388 }, () => ({ x: 0, y: 0 }));
+  points[10] = { x: .5, y: .2 };
+  points[152] = { x: .5, y: .8 };
+  points[1] = { x: .5, y: noseY };
   points[362] = { x: .6, y: .4 };
   points[263] = { x: .6 + leftWidth, y: .4 };
   points[33] = { x: .3, y: .4 };
@@ -23,7 +26,7 @@ function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenn
 
 function calibratedDetector() {
   const detector = new AngleRobustBlinkDetector();
-  for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05);
+  for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05, landmarks());
   detector.finishCalibration();
   return detector;
 }
@@ -33,6 +36,19 @@ function geometryCalibratedDetector() {
   for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05, landmarks());
   detector.finishCalibration();
   return detector;
+}
+
+function settlePose(detector, poseLandmarks, left = .05, right = .05, opennessFrames = 18) {
+  const results = [];
+  for (let index = 0; index < opennessFrames; index += 1) {
+    results.push(detector.update({
+      now: -1000 + index * 33,
+      left,
+      right,
+      landmarks: poseLandmarks
+    }));
+  }
+  return results;
 }
 
 test("keeps equal eye weights for a frontal face", () => {
@@ -55,6 +71,7 @@ test("counts a normal frontal blink after reopening", () => {
 test("uses the more visible eye when the face is angled", () => {
   const detector = calibratedDetector();
   const angled = landmarks(.16, .04);
+  settlePose(detector, angled);
   const frames = [
     [0, .05, .05], [33, .8, .01], [66, .8, .01], [99, .8, .01],
     [132, .05, .05], [165, .05, .05], [198, .05, .05]
@@ -66,6 +83,7 @@ test("uses the more visible eye when the face is angled", () => {
 test("uses the visible right eye when the face turns the other way", () => {
   const detector = calibratedDetector();
   const angled = landmarks(.04, .16);
+  settlePose(detector, angled);
   const frames = [
     [0, .05, .05], [33, .01, .8], [66, .01, .8], [99, .01, .8],
     [132, .05, .05], [165, .05, .05], [198, .05, .05]
@@ -134,4 +152,24 @@ test("accumulates only confirmed open exposure and resets while resting", () => 
   assert.equal(tracker.update(300, "resting"), 0);
   assert.equal(tracker.update(1000, "resting"), 0);
   assert.equal(tracker.update(1100, "open"), 100);
+});
+
+test("builds and reuses a baseline for a changed face angle", () => {
+  const detector = geometryCalibratedDetector();
+  const frontal = landmarks();
+  const reclined = landmarks(.1, .1, .62, .62, .58);
+  assert.notEqual(poseProfileKey(frontal), poseProfileKey(reclined));
+
+  const firstVisit = settlePose(detector, reclined, .12, .12);
+  assert.equal(firstVisit.some((result) => result.poseChanged), true);
+  assert.equal(firstVisit.some((result) => result.recalibrating), true);
+  assert.equal(firstVisit.at(-1).recalibrating, false);
+  assert.equal(firstVisit.at(-1).state, "open");
+
+  settlePose(detector, frontal);
+  const returnVisit = settlePose(detector, reclined, .12, .12, 6);
+  const switched = returnVisit.find((result) => result.poseChanged);
+  assert.ok(switched);
+  assert.equal(switched.recalibrating, false);
+  assert.equal(switched.state, "open");
 });

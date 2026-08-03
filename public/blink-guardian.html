@@ -283,7 +283,7 @@
             </div>
             <div class="setting-row">
               <label for="sensitivityRange">眨眼靈敏度</label>
-              <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="6" value="5" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">最靈敏</strong></div>
+              <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="6" value="3" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">標準</strong></div>
             </div>
             <div class="setting-row"><span>提示音</span><button class="toggle" id="soundToggle" type="button" aria-label="切換提示音" aria-pressed="true"></button></div>
             <button class="primary" id="startButton" type="button">開啟鏡頭並開始</button>
@@ -378,7 +378,7 @@
     let lastVideoTime = -1;
     let startedAt = 0;
     let blinks = [];
-    const DEFAULT_SENSITIVITY = 5;
+    const DEFAULT_SENSITIVITY = 3;
     const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: DEFAULT_SENSITIVITY });
     const exposureTracker = new OpenEyeExposureTracker();
     let faceLastSeen = 0;
@@ -889,10 +889,15 @@
               ui.left.style.height = `${Math.round(detection.leftLevel * 100)}%`;
               ui.right.style.height = `${Math.round(detection.rightLevel * 100)}%`;
               setThresholdMarker(detection.closeThreshold);
+              if (detection.poseChanged) exposureTracker.reset(now);
               exposureTracker.update(now, detection.state);
               if (detection.closureStarted) registerRest();
               if (detection.closureEnded) registerBlink(now);
-              if (now - faceLastSeen < 500) setStatus("監測中", "保持自然就好", "會依臉部角度調整左右眼的判定權重。", true);
+              if (detection.recalibrating) {
+                setStatus("角度校正", "自然張開眼睛", "正在建立目前角度的開眼基準，約半秒後恢復。", true);
+              } else if (now - faceLastSeen < 500) {
+                setStatus("監測中", "保持自然就好", "角度改變時會切換或建立對應的開眼基準。", true);
+              }
             }
           } else if (now - faceLastSeen > 1200) {
             blinkDetector.resetMotion();
