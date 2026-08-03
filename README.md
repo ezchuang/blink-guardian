@@ -1,6 +1,6 @@
 # Blink Guardian／眨眼守門員
 
-使用 Webcam 與 MediaPipe Face Landmarker 在瀏覽器端監測眨眼節奏。低於設定頻率或超過 10 秒未眨眼時，介面會提示使用者完成 3 次完整眨眼；每 20 分鐘另有 20-20-20 休息提醒。
+使用 Webcam 與 MediaPipe Face Landmarker 在瀏覽器端監測連續開眼暴露時間。連續開眼達設定秒數時，介面會提醒使用者眨眼或閉眼休息；閉眼期間不累積、不提醒。每 20 分鐘另有 20-20-20 休息提醒。
 
 ## 本機開發
 
@@ -23,7 +23,8 @@ npm test
 
 ## 專案結構
 
-- `public/blink-guardian.html`：主要 UI 與眨眼偵測邏輯。
+- `public/blink-guardian.html`：主要 UI、提醒與歷史紀錄邏輯。
+- `public/blink-detector.js`：逐眼校正、角度調整、有效閉合與開眼暴露狀態機。
 - `app/page.tsx`：將網站根路徑導向主要頁面。
 - `scripts/vinext.mjs`：跨 Windows／macOS／Linux 的 vinext 啟動器。
 - `.openai/hosting.json`：OpenAI Sites project linkage。
@@ -32,7 +33,7 @@ npm test
 
 - 鏡頭畫面只在瀏覽器中交由 MediaPipe 處理，不錄影或上傳。
 - 第一次載入需從 CDN 下載 MediaPipe JavaScript、WebAssembly 與 Face Landmarker model。
-- 預設 12 次／分鐘及 10 秒間隔是行為提醒門檻，不是醫療診斷標準。
+- 預設連續開眼 10 秒是行為提醒門檻，不是醫療診斷標準。
 - 若持續乾澀、疼痛、畏光或視力改變，應諮詢眼科醫師。
 
 目前私人部署：<https://blink-guardian-tw.kate0099.chatgpt.site>

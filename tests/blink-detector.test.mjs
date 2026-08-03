@@ -1,19 +1,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AngleRobustBlinkDetector, eyeVisibilityWeights } from "../public/blink-detector.js";
+import { AngleRobustBlinkDetector, OpenEyeExposureTracker, eyeVisibilityWeights } from "../public/blink-detector.js";
 
-function landmarks(leftWidth = .1, rightWidth = .1) {
-  const points = Array.from({ length: 363 }, () => ({ x: 0, y: 0 }));
+function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1) {
+  const points = Array.from({ length: 388 }, () => ({ x: 0, y: 0 }));
   points[362] = { x: .6, y: .4 };
   points[263] = { x: .6 + leftWidth, y: .4 };
   points[33] = { x: .3, y: .4 };
   points[133] = { x: .3 + rightWidth, y: .4 };
+  const leftHalfHeight = leftWidth * .175 * leftOpenness;
+  const rightHalfHeight = rightWidth * .175 * rightOpenness;
+  points[385] = { x: .6 + leftWidth * .35, y: .4 - leftHalfHeight };
+  points[380] = { x: .6 + leftWidth * .35, y: .4 + leftHalfHeight };
+  points[387] = { x: .6 + leftWidth * .65, y: .4 - leftHalfHeight };
+  points[373] = { x: .6 + leftWidth * .65, y: .4 + leftHalfHeight };
+  points[160] = { x: .3 + rightWidth * .35, y: .4 - rightHalfHeight };
+  points[144] = { x: .3 + rightWidth * .35, y: .4 + rightHalfHeight };
+  points[158] = { x: .3 + rightWidth * .65, y: .4 - rightHalfHeight };
+  points[153] = { x: .3 + rightWidth * .65, y: .4 + rightHalfHeight };
   return points;
 }
 
 function calibratedDetector() {
   const detector = new AngleRobustBlinkDetector();
   for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05);
+  detector.finishCalibration();
+  return detector;
+}
+
+function geometryCalibratedDetector() {
+  const detector = new AngleRobustBlinkDetector();
+  for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05, landmarks());
   detector.finishCalibration();
   return detector;
 }
@@ -87,4 +104,34 @@ test("lowers the close threshold when sensitivity increases", () => {
   const conservative = detector.thresholds(false).close;
   detector.setSensitivity(6);
   assert.ok(detector.thresholds(false).close < conservative);
+});
+
+test("detects closure from eyelid geometry when blendshape scores stay low", () => {
+  const detector = geometryCalibratedDetector();
+  detector.update({ now: 0, left: .08, right: .08, landmarks: landmarks() });
+  const closed = detector.update({ now: 33, left: .12, right: .12, landmarks: landmarks(.1, .1, .05, .05) });
+  assert.equal(closed.closureStarted, true);
+  assert.equal(closed.state, "resting");
+});
+
+test("keeps long closures resting and counts once after reopening", () => {
+  const detector = geometryCalibratedDetector();
+  detector.update({ now: 0, left: .05, right: .05, landmarks: landmarks() });
+  detector.update({ now: 33, left: .1, right: .1, landmarks: landmarks(.1, .1, .05, .05) });
+  const held = detector.update({ now: 2500, left: .1, right: .1, landmarks: landmarks(.1, .1, .05, .05) });
+  const reopened = detector.update({ now: 2533, left: .05, right: .05, landmarks: landmarks() });
+  assert.equal(held.state, "resting");
+  assert.equal(held.closureEnded, false);
+  assert.equal(reopened.closureEnded, true);
+  assert.ok(reopened.closureDuration > 1200);
+});
+
+test("accumulates only confirmed open exposure and resets while resting", () => {
+  const tracker = new OpenEyeExposureTracker();
+  tracker.reset(0);
+  assert.equal(tracker.update(100, "open"), 100);
+  assert.equal(tracker.update(200, "uncertain"), 100);
+  assert.equal(tracker.update(300, "resting"), 0);
+  assert.equal(tracker.update(1000, "resting"), 0);
+  assert.equal(tracker.update(1100, "open"), 100);
 });

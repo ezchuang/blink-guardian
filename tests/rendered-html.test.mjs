@@ -16,9 +16,11 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /navigator\.mediaDevices\.getUserMedia/);
     assert.match(html, /@mediapipe\/tasks-vision@\$\{MP_VERSION\}/);
     assert.match(html, /影像只在你的裝置上處理/);
-    assert.match(html, /提醒目標/);
+    assert.match(html, /連續開眼提醒/);
     assert.match(html, /眨眼節奏紀錄/);
     assert.match(html, /AngleRobustBlinkDetector/);
+    assert.match(html, /OpenEyeExposureTracker/);
+    assert.match(html, /閉眼期間不會繼續計時/);
     assert.match(html, /會依臉部角度調整左右眼的判定權重/);
     assert.match(html, /眨眼靈敏度/);
     assert.match(html, /id="sensitivityRange"[^>]+max="6"[^>]+value="5"/);

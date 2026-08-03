@@ -39,31 +39,39 @@ export class AngleRobustBlinkDetector {
   }
 
   thresholds(angled = false) {
-    const close = (angled ? .37 : .39) - this.sensitivity * .2;
+    const close = (angled ? .53 : .55) - this.sensitivity * .3;
     return {
       close,
-      minEye: .2 - this.sensitivity * .08,
-      open: .13 + this.sensitivity * .05,
-      openEye: .22 + this.sensitivity * .08
+      reopen: close * .45,
+      strong: Math.min(.82, close + .28)
     };
   }
 
   resetCalibration() {
     this.calibrationLeft = [];
     this.calibrationRight = [];
+    this.calibrationLeftEar = [];
+    this.calibrationRightEar = [];
     this.openLeft = .05;
     this.openRight = .05;
+    this.openLeftEar = null;
+    this.openRightEar = null;
     this.resetMotion();
   }
 
-  addCalibrationFrame(left, right) {
+  addCalibrationFrame(left, right, landmarks, aspectRatio = 1) {
     this.calibrationLeft.push(clamp(left));
     this.calibrationRight.push(clamp(right));
+    const geometry = eyeGeometry(landmarks, aspectRatio);
+    if (geometry.leftEar) this.calibrationLeftEar.push(geometry.leftEar);
+    if (geometry.rightEar) this.calibrationRightEar.push(geometry.rightEar);
   }
 
   finishCalibration() {
     this.openLeft = clamp(percentile(this.calibrationLeft, .25), .01, .32);
     this.openRight = clamp(percentile(this.calibrationRight, .25), .01, .32);
+    this.openLeftEar = percentile(this.calibrationLeftEar, .7, 0) || null;
+    this.openRightEar = percentile(this.calibrationRightEar, .7, 0) || null;
     this.resetMotion();
   }
 
@@ -73,27 +81,31 @@ export class AngleRobustBlinkDetector {
     this.closedAt = 0;
     this.lastBlinkAt = -Infinity;
     this.fastClosure = false;
+    this.state = "open";
     this.smoothLeft = null;
     this.smoothRight = null;
   }
 
-  normalizedClosure(value, baseline) {
+  normalizedBlendClosure(value, baseline) {
     return clamp((value - baseline) / Math.max(.2, 1 - baseline));
+  }
+
+  geometryClosure(ear, openEar) {
+    if (!ear || !openEar) return 0;
+    return clamp(1 - ear / openEar);
   }
 
   update({ now, left, right, landmarks, aspectRatio = 1 }) {
     this.smoothLeft = this.smoothLeft === null ? left : this.smoothLeft * .55 + left * .45;
     this.smoothRight = this.smoothRight === null ? right : this.smoothRight * .55 + right * .45;
 
-    if (!this.closed && !this.closeCandidateAt) {
-      if (this.smoothLeft < this.openLeft + .16) this.openLeft = this.openLeft * .995 + this.smoothLeft * .005;
-      if (this.smoothRight < this.openRight + .16) this.openRight = this.openRight * .995 + this.smoothRight * .005;
-    }
-
-    const leftLevel = this.normalizedClosure(this.smoothLeft, this.openLeft);
-    const rightLevel = this.normalizedClosure(this.smoothRight, this.openRight);
-    const rawLeftLevel = this.normalizedClosure(left, this.openLeft);
-    const rawRightLevel = this.normalizedClosure(right, this.openRight);
+    const geometry = eyeGeometry(landmarks, aspectRatio);
+    const leftGeometryLevel = this.geometryClosure(geometry.leftEar, this.openLeftEar);
+    const rightGeometryLevel = this.geometryClosure(geometry.rightEar, this.openRightEar);
+    const leftLevel = Math.max(this.normalizedBlendClosure(this.smoothLeft, this.openLeft), leftGeometryLevel);
+    const rightLevel = Math.max(this.normalizedBlendClosure(this.smoothRight, this.openRight), rightGeometryLevel);
+    const rawLeftLevel = Math.max(this.normalizedBlendClosure(left, this.openLeft), leftGeometryLevel);
+    const rawRightLevel = Math.max(this.normalizedBlendClosure(right, this.openRight), rightGeometryLevel);
     const weights = eyeVisibilityWeights(landmarks, aspectRatio);
     const combined = leftLevel * weights.left + rightLevel * weights.right;
     const rawCombined = rawLeftLevel * weights.left + rawRightLevel * weights.right;
@@ -104,18 +116,15 @@ export class AngleRobustBlinkDetector {
     const rawVisibleLevel = visibleLeft ? rawLeftLevel : rawRightLevel;
     const closeSignal = angled
       ? visibleLevel >= threshold.close
-      : combined >= threshold.close && Math.min(leftLevel, rightLevel) >= threshold.minEye;
+      : combined >= threshold.close && Math.min(leftLevel, rightLevel) >= threshold.close * .55;
     const fastCloseSignal = angled
-      ? rawVisibleLevel >= threshold.close + .16
-      : rawCombined >= threshold.close + .16 && Math.min(rawLeftLevel, rawRightLevel) >= threshold.minEye + .18;
-    const rawOpenSignal = angled
-      ? rawVisibleLevel <= threshold.openEye
-      : rawCombined <= threshold.open && Math.max(rawLeftLevel, rawRightLevel) <= threshold.openEye;
-    const openSignal = (angled
-      ? visibleLevel <= threshold.openEye
-      : combined <= threshold.open && Math.max(leftLevel, rightLevel) <= threshold.openEye)
-      || (this.fastClosure && rawOpenSignal);
-    let blink = false;
+      ? rawVisibleLevel >= threshold.strong
+      : rawCombined >= threshold.strong && Math.min(rawLeftLevel, rawRightLevel) >= threshold.close;
+    const rawOpenSignal = angled ? rawVisibleLevel <= threshold.reopen : rawCombined <= threshold.reopen;
+    const openSignal = angled ? visibleLevel <= threshold.reopen : combined <= threshold.reopen;
+    let closureStarted = false;
+    let closureEnded = false;
+    let closureDuration = 0;
 
     if (!this.closed) {
       if (fastCloseSignal) {
@@ -123,32 +132,82 @@ export class AngleRobustBlinkDetector {
         this.fastClosure = true;
         this.closedAt = now;
         this.closeCandidateAt = 0;
+        closureStarted = true;
       } else if (closeSignal) {
         this.closeCandidateAt ||= now;
         if (now - this.closeCandidateAt >= 28) {
           this.closed = true;
           this.fastClosure = false;
           this.closedAt = this.closeCandidateAt;
+          closureStarted = true;
         }
       } else {
         this.closeCandidateAt = 0;
       }
-    } else if (openSignal) {
-      const duration = now - this.closedAt;
+    } else if (openSignal || (this.fastClosure && rawOpenSignal)) {
+      closureDuration = now - this.closedAt;
       const minimumDuration = this.fastClosure ? 20 : 55;
-      blink = duration >= minimumDuration && duration <= 1200 && now - this.lastBlinkAt >= 150;
-      if (blink) this.lastBlinkAt = now;
-      this.closed = false;
-      this.fastClosure = false;
-      this.closeCandidateAt = 0;
-      this.closedAt = 0;
-    } else if (now - this.closedAt > 1200) {
+      closureEnded = closureDuration >= minimumDuration && now - this.lastBlinkAt >= 150;
+      if (closureEnded) this.lastBlinkAt = now;
       this.closed = false;
       this.fastClosure = false;
       this.closeCandidateAt = 0;
       this.closedAt = 0;
     }
 
-    return { blink, leftLevel, rightLevel, combined, angled, closeThreshold: threshold.close };
+    this.state = this.closed ? "resting" : this.closeCandidateAt || !openSignal ? "uncertain" : "open";
+    if (this.state === "open") {
+      if (leftLevel < .06) this.openLeft = this.openLeft * .997 + this.smoothLeft * .003;
+      if (rightLevel < .06) this.openRight = this.openRight * .997 + this.smoothRight * .003;
+      if (leftGeometryLevel < .06 && geometry.leftEar && this.openLeftEar) this.openLeftEar = this.openLeftEar * .997 + geometry.leftEar * .003;
+      if (rightGeometryLevel < .06 && geometry.rightEar && this.openRightEar) this.openRightEar = this.openRightEar * .997 + geometry.rightEar * .003;
+    }
+
+    return {
+      blink: closureEnded,
+      closureStarted,
+      closureEnded,
+      closureDuration,
+      state: this.state,
+      openness: 1 - (angled ? visibleLevel : combined),
+      leftLevel,
+      rightLevel,
+      combined,
+      angled,
+      closeThreshold: threshold.close
+    };
+  }
+}
+
+function eyeGeometry(landmarks, aspectRatio = 1) {
+  const ratio = (outer, inner, upperA, lowerA, upperB, lowerB) => {
+    const width = landmarkDistance(landmarks, outer, inner, aspectRatio);
+    if (width < .001) return 0;
+    const heightA = landmarkDistance(landmarks, upperA, lowerA, aspectRatio);
+    const heightB = landmarkDistance(landmarks, upperB, lowerB, aspectRatio);
+    return (heightA + heightB) / (2 * width);
+  };
+  return {
+    leftEar: ratio(362, 263, 385, 380, 387, 373),
+    rightEar: ratio(33, 133, 160, 144, 158, 153)
+  };
+}
+
+export class OpenEyeExposureTracker {
+  constructor() {
+    this.reset();
+  }
+
+  reset(now = null) {
+    this.openMs = 0;
+    this.lastAt = now;
+  }
+
+  update(now, state) {
+    const delta = this.lastAt === null ? 0 : Math.min(150, Math.max(0, now - this.lastAt));
+    this.lastAt = now;
+    if (state === "open") this.openMs += delta;
+    else if (state === "resting") this.openMs = 0;
+    return this.openMs;
   }
 }
