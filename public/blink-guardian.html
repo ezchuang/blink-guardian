@@ -785,7 +785,8 @@
 
     function countBlink(now, left, right) {
       const both = (left + right) / 2;
-      if (!eyeClosed && both >= closeThreshold && left >= closeThreshold - .14 && right >= closeThreshold - .14) {
+      const perEyeThreshold = Math.max(.2, closeThreshold - .12);
+      if (!eyeClosed && both >= closeThreshold && left >= perEyeThreshold && right >= perEyeThreshold) {
         eyeClosed = true;
         closedAt = now;
       } else if (eyeClosed && both <= openThreshold) {
@@ -811,8 +812,8 @@
     function finishCalibration() {
       const sorted = calibrationScores.sort((a,b) => a - b);
       const openBase = sorted[Math.floor(sorted.length * .25)] ?? .05;
-      closeThreshold = Math.min(.74, Math.max(.48, openBase + .42));
-      openThreshold = Math.min(.48, Math.max(.24, openBase + .2));
+      closeThreshold = Math.min(.62, Math.max(.36, openBase + .3));
+      openThreshold = Math.min(.38, Math.max(.18, openBase + .14));
       lastBlinkAt = performance.now();
       setStatus("監測中", "保持自然就好", "偵測到太久未眨眼時，這裡會提醒你。", true);
     }
