@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../public/blink-detector.js";
+import { AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../blink-detector.js";
 
 function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1, noseY = .48) {
   const points = Array.from({ length: 388 }, () => ({ x: 0, y: 0 }));
