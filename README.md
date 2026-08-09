@@ -1,10 +1,27 @@
 # Blink Guardian／眨眼守門員
 
-使用 Webcam 與 MediaPipe Face Landmarker 在瀏覽器端監測連續開眼暴露時間。連續開眼達設定秒數時，介面會提醒使用者眨眼或閉眼休息；閉眼期間不累積、不提醒。每 20 分鐘另有 20-20-20 休息提醒。
+A privacy-first, browser-based blink timing and break reminder powered by MediaPipe Face Landmarker.
 
-偵測器會為不同臉部角度建立本次監測專用的開眼 baseline：`eyeBlink` 取最低三次平均，眼瞼幾何比例取最高三次平均。切換到新角度時會短暫暫停開眼計時並重新校正；回到已見過的角度則直接重用記憶體中的 profile。這些 profile 不會儲存到裝置。預設靈敏度為「標準」。
+[線上使用](https://ezchuang.github.io/blink-guardian/) · [回報問題](https://github.com/ezchuang/blink-guardian/issues)
 
-提醒同時使用兩種訊號：連續開眼時間是單次安全網；60 秒有效眨眼移動窗則觀察 session 內的個人節奏。趨勢必須持續偏低且當下已一段時間未眨才提醒，長閉眼休息會暫時抑制趨勢提醒。歷史圖表另記錄最近一分鐘的平均閉眼時長，並以平滑曲線呈現。
+Blink Guardian 使用 Webcam 在瀏覽器端估算眼睛閉合狀態、連續開眼時間與眨眼節奏。影像不會錄製或上傳；偵測結果與最長 24 小時的歷史紀錄只保存在目前裝置。
+
+## 功能
+
+- 以連續開眼時間作為單次提醒安全網。
+- 使用 60 秒移動窗與 session baseline 判斷持續偏低的眨眼節奏。
+- 依臉部角度建立獨立的開眼 baseline，回到相同角度時重用 profile。
+- 記錄有效閉合頻率、平均閉眼時長與提醒事件，時間窗最長 24 小時。
+- 提供 20-20-20 遠望休息提醒。
+- 靈敏度與連續開眼提醒秒數可在介面調整；靈敏度於重新開始時重設。
+
+## 隱私與限制
+
+- Webcam 影像只在瀏覽器中交由 MediaPipe 處理，不錄影或上傳。
+- 第一次使用需從 CDN 下載 MediaPipe JavaScript、WebAssembly 與 Face Landmarker model。
+- 瀏覽器進入背景或最小化時會暫停高頻影像處理，回到頁面後重新校正。
+- 「有效閉合」是 Webcam 模型的行為估計，不等同醫療等級的完整眨眼判定。
+- 這是習慣提醒工具，不是醫療器材或診斷。若持續乾澀、疼痛、畏光或視力改變，請諮詢眼科醫師。
 
 ## 本機開發
 
@@ -15,29 +32,25 @@ npm ci
 npm run dev
 ```
 
-依終端機顯示的 Local URL 開啟網站，並允許瀏覽器使用鏡頭。
+開啟終端機顯示的 `http://127.0.0.1:4317/`，並允許瀏覽器使用鏡頭。
 
 ## 驗證
 
 ```powershell
 npm test
+npm run lint
 ```
 
-`npm test` 會建立 Sites 相容的 production build，並檢查核心頁面、鏡頭 API、MediaPipe 模型設定與隱私說明是否存在。
+`npm test` 會建立 `dist/` static site，並驗證偵測狀態機、移動窗提醒與頁面必要功能。GitHub Pages workflow 只會在驗證成功後發布 `dist/`。
 
-## 專案結構
+## 技術
 
-- `public/blink-guardian.html`：主要 UI、提醒與歷史紀錄邏輯。
-- `public/blink-detector.js`：逐眼校正、角度調整、有效閉合、開眼暴露與移動窗趨勢狀態機。
-- `app/page.tsx`：將網站根路徑導向主要頁面。
-- `scripts/vinext.mjs`：跨 Windows／macOS／Linux 的 vinext 啟動器。
-- `.openai/hosting.json`：OpenAI Sites project linkage。
+- Vanilla HTML、CSS、JavaScript
+- MediaPipe Face Landmarker
+- Canvas history charts
+- Browser `localStorage`
+- GitHub Pages／GitHub Actions
 
-## 隱私與限制
+## License
 
-- 鏡頭畫面只在瀏覽器中交由 MediaPipe 處理，不錄影或上傳。
-- 第一次載入需從 CDN 下載 MediaPipe JavaScript、WebAssembly 與 Face Landmarker model。
-- 預設連續開眼 10 秒是行為提醒門檻，不是醫療診斷標準。
-- 若持續乾澀、疼痛、畏光或視力改變，應諮詢眼科醫師。
-
-目前私人部署：<https://blink-guardian-tw.kate0099.chatgpt.site>
+[MIT](LICENSE) © 2026 ezchuang

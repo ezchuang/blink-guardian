@@ -1,0 +1,39 @@
+name: Bug report
+description: 回報偵測、提醒、圖表或瀏覽器相容性問題
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題描述
+      description: 請描述實際行為與你預期的行為。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      placeholder: |
+        1. 開啟網站
+        2. 啟動鏡頭
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: 瀏覽器與版本
+      placeholder: Chrome 140
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 作業系統與 Webcam
+      placeholder: Windows 11，內建 Webcam
+  - type: textarea
+    id: context
+    attributes:
+      label: 補充資訊
+      description: 可附上 console error；請勿上傳包含臉部影像、個資或 credentials 的內容。

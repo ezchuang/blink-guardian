@@ -1,0 +1,24 @@
+name: Feature request
+description: 提出功能或使用體驗建議
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: 使用情境
+      description: 你遇到什麼問題，或希望改善什麼情境？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建議方案
+      description: 請描述希望的行為；不必先提供技術實作。
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: 可能的取捨
+      description: 若有想到誤判、隱私、效能或提醒壓力等影響，可在此補充。
