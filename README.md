@@ -6,6 +6,8 @@ A privacy-first, browser-based blink timing and break reminder powered by MediaP
 
 Blink Guardian 使用 Webcam 在瀏覽器端估算眼睛閉合狀態、連續開眼時間與眨眼節奏。影像不會錄製或上傳；偵測結果與最長 24 小時的歷史紀錄只保存在目前裝置。
 
+GitHub 版本是純靜態單頁 Web app，可直接部署至 GitHub Pages；不需要 backend、database 或 OpenAI Sites runtime。頁面以 `index.html` 為入口，功能程式與 assets 分開管理，方便測試與維護。
+
 ## 功能
 
 - 以連續開眼時間作為單次提醒安全網。
