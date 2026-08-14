@@ -358,7 +358,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker } from "./blink-detector.js";
+    import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker } from "./blink-detector.js";
 
     const MP_VERSION = "0.10.35";
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
@@ -394,6 +394,7 @@
     const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: DEFAULT_SENSITIVITY });
     const exposureTracker = new OpenEyeExposureTracker();
     const blinkTrendTracker = new BlinkTrendTracker();
+    const inferenceScheduler = new AdaptiveInferenceScheduler();
     let currentEyeState = "uncertain";
     let faceLastSeen = 0;
     let lastReminderAt = 0;
@@ -408,6 +409,9 @@
     let historyWindowMinutes = 60;
     let lastHistorySampleAt = 0;
     let lastChartDrawAt = 0;
+    let lastStatsUpdateAt = 0;
+    let lastMeterUpdateAt = 0;
+    let lastThresholdMarker = "";
     const HISTORY_KEY = "blinkGuardian.history.v1";
     const HISTORY_MAX_AGE = 24 * 60 * 60 * 1000;
     const HISTORY_SAMPLE_INTERVAL = 30000;
@@ -416,10 +420,10 @@
     let history = loadHistory();
 
     function setStatus(label, title, hint, isLive = false) {
-      ui.status.textContent = label;
-      ui.title.textContent = title;
-      ui.hint.textContent = hint;
-      ui.live.classList.toggle("live", isLive);
+      if (ui.status.textContent !== label) ui.status.textContent = label;
+      if (ui.title.textContent !== title) ui.title.textContent = title;
+      if (ui.hint.textContent !== hint) ui.hint.textContent = hint;
+      if (ui.live.classList.contains("live") !== isLive) ui.live.classList.toggle("live", isLive);
     }
 
     function toast(message) {
@@ -431,6 +435,8 @@
 
     function setThresholdMarker(value) {
       const marker = `${Math.round(value * 100)}%`;
+      if (marker === lastThresholdMarker) return;
+      lastThresholdMarker = marker;
       ui.left.parentElement.style.setProperty("--threshold", marker);
       ui.right.parentElement.style.setProperty("--threshold", marker);
     }
@@ -507,8 +513,8 @@
     function recordSample(now, force = false) {
       const wallNow = Date.now();
       const facePresent = now - faceLastSeen < 1800;
-      if (!running || !facePresent || (!force && document.hidden)) return;
-      if (!force && wallNow - lastHistorySampleAt < HISTORY_SAMPLE_INTERVAL) return;
+      if (!running || !facePresent || (!force && document.hidden)) return false;
+      if (!force && wallNow - lastHistorySampleAt < HISTORY_SAMPLE_INTERVAL) return false;
       history.samples.push({
         t: wallNow,
         rate: Math.round(blinkTrendTracker.metrics(now).rate),
@@ -518,6 +524,7 @@
       });
       lastHistorySampleAt = wallNow;
       saveHistory();
+      return true;
     }
 
     function chartData(minutes) {
@@ -717,6 +724,8 @@
 
     function updateStats(now) {
       if (!running || document.hidden) return;
+      if (now - lastStatsUpdateAt < 250) return;
+      lastStatsUpdateAt = now;
       const elapsed = activeElapsed(now) / 1000;
       const trend = blinkTrendTracker.metrics(now);
       const rate = Math.round(trend.rate);
@@ -742,8 +751,7 @@
         showBlinkReminder(false, `近一分鐘約 ${rate} 次，低於個人節奏`, "trend");
       }
       if (now >= nextBreakAt && !breakTimer) showDistanceBreak();
-      recordSample(now);
-      drawHistoryCharts();
+      if (recordSample(now)) drawHistoryCharts(true);
     }
 
     function showBlinkReminder(test = false, reason = "", mode = "exposure") {
@@ -812,7 +820,15 @@
       try {
         landmarker ||= await createLandmarker();
         setStatus("等待權限", "請允許使用鏡頭", "影像只會在這個瀏覽器分頁中處理，不會上傳。 ");
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 640, max: 960 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 24, max: 30 }
+          },
+          audio: false
+        });
         ui.video.srcObject = stream;
         await ui.video.play();
         running = true;
@@ -825,12 +841,15 @@
         blinkDetector.resetCalibration();
         exposureTracker.reset(startedAt);
         blinkTrendTracker.reset(startedAt);
+        inferenceScheduler.reset(startedAt);
         currentEyeState = "uncertain";
         lastReminderAt = -Infinity;
         lastTrendReminderAt = -Infinity;
         nextBreakAt = startedAt + 20 * 60 * 1000;
         calibrationUntil = startedAt + 3000;
         lastHistorySampleAt = Date.now();
+        lastStatsUpdateAt = -Infinity;
+        lastMeterUpdateAt = -Infinity;
         ui.panel.classList.add("live");
         ui.start.disabled = false;
         ui.start.textContent = "停止監測";
@@ -863,6 +882,7 @@
       exposureTracker.reset();
       blinkTrendTracker.reset();
       currentEyeState = "uncertain";
+      inferenceScheduler.reset();
       updateSensitivity(DEFAULT_SENSITIVITY);
       ui.start.textContent = "重新開始監測";
       setStatus("已停止", "鏡頭已關閉", "本次資料只存在記憶體中，重新開始時會清除。 ");
@@ -915,6 +935,7 @@
         blinkDetector.resetCalibration();
         exposureTracker.reset(now);
         blinkTrendTracker.resetWindow(now);
+        inferenceScheduler.resetSchedule(now);
         currentEyeState = "uncertain";
         calibrationUntil = now + 1500;
         lastVideoTime = -1;
@@ -948,10 +969,12 @@
     function loop() {
       if (!running) return;
       const now = performance.now();
-      if (ui.video.readyState >= 2 && ui.video.currentTime !== lastVideoTime) {
+      if (ui.video.readyState >= 2 && ui.video.currentTime !== lastVideoTime && inferenceScheduler.shouldRun(now)) {
         lastVideoTime = ui.video.currentTime;
         try {
+          const inferenceStartedAt = performance.now();
           const result = landmarker.detectForVideo(ui.video, now);
+          inferenceScheduler.record(performance.now() - inferenceStartedAt, performance.now());
           const categories = result.faceBlendshapes?.[0]?.categories;
           const landmarks = result.faceLandmarks?.[0];
           if (categories?.length) {
@@ -963,8 +986,11 @@
                 left, right, landmarks,
                 ui.video.videoWidth / Math.max(1, ui.video.videoHeight)
               );
-              ui.left.style.height = `${Math.round(left * 100)}%`;
-              ui.right.style.height = `${Math.round(right * 100)}%`;
+              if (now - lastMeterUpdateAt >= 100) {
+                lastMeterUpdateAt = now;
+                ui.left.style.height = `${Math.round(left * 100)}%`;
+                ui.right.style.height = `${Math.round(right * 100)}%`;
+              }
               const seconds = Math.max(1, Math.ceil((calibrationUntil - now) / 1000));
               ui.status.textContent = `校正 ${seconds} 秒`;
             } else {
@@ -973,9 +999,12 @@
                 now, left, right, landmarks,
                 aspectRatio: ui.video.videoWidth / Math.max(1, ui.video.videoHeight)
               });
-              ui.left.style.height = `${Math.round(detection.leftLevel * 100)}%`;
-              ui.right.style.height = `${Math.round(detection.rightLevel * 100)}%`;
-              setThresholdMarker(detection.closeThreshold);
+              if (now - lastMeterUpdateAt >= 100) {
+                lastMeterUpdateAt = now;
+                ui.left.style.height = `${Math.round(detection.leftLevel * 100)}%`;
+                ui.right.style.height = `${Math.round(detection.rightLevel * 100)}%`;
+                setThresholdMarker(detection.closeThreshold);
+              }
               if (detection.poseChanged) exposureTracker.reset(now);
               exposureTracker.update(now, detection.state);
               blinkTrendTracker.update(now, detection.state);
@@ -1032,6 +1061,11 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("resize", () => drawHistoryCharts(true));
     window.addEventListener("pagehide", () => { stream?.getTracks().forEach((track) => track.stop()); landmarker?.close?.(); });
+    window.getBlinkGuardianDiagnostics = () => ({
+      camera: stream?.getVideoTracks?.()[0]?.getSettings?.() || null,
+      inference: inferenceScheduler.snapshot(),
+      browser: navigator.userAgent
+    });
     updateSensitivity(DEFAULT_SENSITIVITY);
     drawHistoryCharts(true);
   </script>

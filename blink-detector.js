@@ -443,3 +443,91 @@ export class BlinkTrendTracker {
       !metrics.suppressed;
   }
 }
+
+export class AdaptiveInferenceScheduler {
+  constructor({
+    standardFps = 20,
+    degradedFps = 15,
+    sampleWindowMs = 5000,
+    minimumObservationMs = 2000,
+    minimumSamples = 12,
+    degradeP90Ms = 45,
+    recoverP90Ms = 34,
+    degradedHoldMs = 30000
+  } = {}) {
+    this.standardFps = standardFps;
+    this.degradedFps = degradedFps;
+    this.sampleWindowMs = sampleWindowMs;
+    this.minimumObservationMs = minimumObservationMs;
+    this.minimumSamples = minimumSamples;
+    this.degradeP90Ms = degradeP90Ms;
+    this.recoverP90Ms = recoverP90Ms;
+    this.degradedHoldMs = degradedHoldMs;
+    this.reset();
+  }
+
+  reset(now = 0) {
+    this.mode = "standard";
+    this.lastRunAt = now - this.intervalMs();
+    this.samples = [];
+    this.modeUntil = 0;
+  }
+
+  resetSchedule(now = 0) {
+    this.lastRunAt = now - this.intervalMs();
+  }
+
+  intervalMs() {
+    const fps = this.mode === "degraded" ? this.degradedFps : this.standardFps;
+    return 1000 / fps;
+  }
+
+  shouldRun(now) {
+    if (now - this.lastRunAt + .5 < this.intervalMs()) return false;
+    this.lastRunAt = now;
+    return true;
+  }
+
+  percentile90() {
+    if (!this.samples.length) return 0;
+    const sorted = this.samples.map((sample) => sample.duration).sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * .9) - 1)];
+  }
+
+  record(duration, now) {
+    if (!Number.isFinite(duration) || duration < 0) return false;
+    this.samples.push({ at: now, duration });
+    const cutoff = now - this.sampleWindowMs;
+    while (this.samples.length && this.samples[0].at < cutoff) this.samples.shift();
+
+    const observedMs = this.samples.length > 1 ? now - this.samples[0].at : 0;
+    if (this.samples.length < this.minimumSamples || observedMs < this.minimumObservationMs) return false;
+
+    const p90 = this.percentile90();
+    if (this.mode === "standard" && p90 >= this.degradeP90Ms) {
+      this.mode = "degraded";
+      this.modeUntil = now + this.degradedHoldMs;
+      this.lastRunAt = now;
+      return true;
+    }
+    if (this.mode === "degraded" && now >= this.modeUntil) {
+      if (p90 <= this.recoverP90Ms) {
+        this.mode = "standard";
+        this.modeUntil = 0;
+        this.lastRunAt = now;
+        return true;
+      }
+      this.modeUntil = now + Math.min(10000, this.degradedHoldMs);
+    }
+    return false;
+  }
+
+  snapshot() {
+    return {
+      mode: this.mode,
+      targetFps: this.mode === "degraded" ? this.degradedFps : this.standardFps,
+      p90InferenceMs: Math.round(this.percentile90() * 10) / 10,
+      sampleCount: this.samples.length
+    };
+  }
+}
