@@ -754,7 +754,7 @@
     }
 
     function updateTimerDisplay(now) {
-      if (!running || document.hidden || now - lastTimerUpdateAt < 100) return;
+      if (!running || document.hidden || now - lastTimerUpdateAt < 50) return;
       lastTimerUpdateAt = now;
       const exposureSeconds = exposureTracker.openMs / 1000;
       const targetSeconds = Number(ui.target.value);
