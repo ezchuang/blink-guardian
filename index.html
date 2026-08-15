@@ -754,9 +754,12 @@
     }
 
     function updateTimerDisplay(now) {
-      if (!running || document.hidden || now - lastTimerUpdateAt < 50) return;
+      if (!running || document.hidden || now - lastTimerUpdateAt < 20) return;
       lastTimerUpdateAt = now;
-      const exposureSeconds = exposureTracker.openMs / 1000;
+      const projectedOpenMs = currentEyeState === "open" && now - faceLastSeen < 1800 && exposureTracker.lastAt !== null
+        ? Math.min(150, Math.max(0, now - exposureTracker.lastAt))
+        : 0;
+      const exposureSeconds = (exposureTracker.openMs + projectedOpenMs) / 1000;
       const targetSeconds = Number(ui.target.value);
       ui.rate.textContent = exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
       ui.ring.style.setProperty("--progress", `${Math.min(360, (exposureSeconds / targetSeconds) * 360)}deg`);

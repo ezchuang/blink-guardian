@@ -21,7 +21,8 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /AdaptiveInferenceScheduler/);
     assert.match(html, /getBlinkGuardianDiagnostics/);
     assert.match(html, /function updateTimerDisplay\(now\)/);
-    assert.match(html, /now - lastTimerUpdateAt < 50/);
+    assert.match(html, /now - lastTimerUpdateAt < 20/);
+    assert.match(html, /exposureTracker\.openMs \+ projectedOpenMs/);
     assert.match(html, /updateTimerDisplay\(now\);/);
     assert.match(html, /@mediapipe\/tasks-vision@\$\{MP_VERSION\}/);
     assert.match(html, /影像只在你的裝置上處理/);
