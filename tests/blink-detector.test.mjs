@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../blink-detector.js";
+import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../blink-detector.js";
 
 function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1, noseY = .48) {
   const points = Array.from({ length: 388 }, () => ({ x: 0, y: 0 }));
@@ -200,4 +200,51 @@ test("excludes uncertain time and credits a long eye rest", () => {
   tracker.recordBlink(20000, 1200);
   assert.equal(tracker.metrics(20000).suppressed, true);
   assert.equal(tracker.shouldRemind(20000, "open"), false);
+});
+
+test("limits standard inference to twenty frames per second", () => {
+  const scheduler = new AdaptiveInferenceScheduler();
+  assert.equal(scheduler.shouldRun(0), true);
+  assert.equal(scheduler.shouldRun(49), false);
+  assert.equal(scheduler.shouldRun(50), true);
+  assert.equal(scheduler.snapshot().targetFps, 20);
+});
+
+test("degrades to fifteen frames per second after sustained slow inference", () => {
+  const scheduler = new AdaptiveInferenceScheduler({
+    sampleWindowMs: 1000,
+    minimumObservationMs: 100,
+    minimumSamples: 3,
+    degradedHoldMs: 300
+  });
+  scheduler.record(50, 0);
+  scheduler.record(48, 50);
+  assert.equal(scheduler.record(47, 100), true);
+  assert.deepEqual(scheduler.snapshot(), {
+    mode: "degraded",
+    targetFps: 15,
+    p90InferenceMs: 50,
+    sampleCount: 3
+  });
+  assert.equal(scheduler.shouldRun(166), false);
+  assert.equal(scheduler.shouldRun(167), true);
+});
+
+test("returns to standard mode after the degraded hold and sustained recovery", () => {
+  const scheduler = new AdaptiveInferenceScheduler({
+    sampleWindowMs: 200,
+    minimumObservationMs: 100,
+    minimumSamples: 3,
+    degradedHoldMs: 300
+  });
+  scheduler.record(50, 0);
+  scheduler.record(50, 50);
+  scheduler.record(50, 100);
+  scheduler.record(20, 400);
+  scheduler.record(22, 450);
+  assert.equal(scheduler.record(24, 500), true);
+  assert.equal(scheduler.snapshot().mode, "standard");
+  assert.equal(scheduler.snapshot().targetFps, 20);
+  assert.equal(scheduler.shouldRun(549), false);
+  assert.equal(scheduler.shouldRun(550), true);
 });

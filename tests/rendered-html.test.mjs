@@ -15,6 +15,15 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /<title>眨眼守門員 Blink Guardian<\/title>/);
     assert.match(html, /https:\/\/ezchuang\.github\.io\/blink-guardian\//);
     assert.match(html, /navigator\.mediaDevices\.getUserMedia/);
+    assert.match(html, /width: \{ ideal: 640, max: 960 \}/);
+    assert.match(html, /height: \{ ideal: 480, max: 720 \}/);
+    assert.match(html, /frameRate: \{ ideal: 24, max: 30 \}/);
+    assert.match(html, /AdaptiveInferenceScheduler/);
+    assert.match(html, /getBlinkGuardianDiagnostics/);
+    assert.match(html, /function updateTimerDisplay\(now\)/);
+    assert.match(html, /now - lastTimerUpdateAt < 20/);
+    assert.match(html, /exposureTracker\.openMs \+ projectedOpenMs/);
+    assert.match(html, /updateTimerDisplay\(now\);/);
     assert.match(html, /@mediapipe\/tasks-vision@\$\{MP_VERSION\}/);
     assert.match(html, /影像只在你的裝置上處理/);
     assert.match(html, /連續開眼提醒/);
