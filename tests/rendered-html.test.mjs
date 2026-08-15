@@ -20,6 +20,9 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /frameRate: \{ ideal: 24, max: 30 \}/);
     assert.match(html, /AdaptiveInferenceScheduler/);
     assert.match(html, /getBlinkGuardianDiagnostics/);
+    assert.match(html, /function updateTimerDisplay\(now\)/);
+    assert.match(html, /now - lastTimerUpdateAt < 100/);
+    assert.match(html, /updateTimerDisplay\(now\);/);
     assert.match(html, /@mediapipe\/tasks-vision@\$\{MP_VERSION\}/);
     assert.match(html, /影像只在你的裝置上處理/);
     assert.match(html, /連續開眼提醒/);

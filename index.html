@@ -409,6 +409,7 @@
     let historyWindowMinutes = 60;
     let lastHistorySampleAt = 0;
     let lastChartDrawAt = 0;
+    let lastTimerUpdateAt = 0;
     let lastStatsUpdateAt = 0;
     let lastMeterUpdateAt = 0;
     let lastThresholdMarker = "";
@@ -731,12 +732,10 @@
       const rate = Math.round(trend.rate);
       const targetSeconds = Number(ui.target.value);
       const exposureSeconds = exposureTracker.openMs / 1000;
-      ui.rate.textContent = exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
       ui.total.textContent = blinks.length;
       ui.last.textContent = trend.observedMs >= 5000 ? Math.min(rate, 99) : "—";
       ui.time.textContent = formatTime(elapsed);
       ui.estimate.textContent = "";
-      ui.ring.style.setProperty("--progress", `${Math.min(360, (exposureSeconds / targetSeconds) * 360)}deg`);
 
       const facePresent = now - faceLastSeen < 1800;
       if (facePresent && exposureSeconds >= targetSeconds && now - lastReminderAt > OPEN_REMINDER_COOLDOWN && !ui.reminder.classList.contains("show")) {
@@ -752,6 +751,15 @@
       }
       if (now >= nextBreakAt && !breakTimer) showDistanceBreak();
       if (recordSample(now)) drawHistoryCharts(true);
+    }
+
+    function updateTimerDisplay(now) {
+      if (!running || document.hidden || now - lastTimerUpdateAt < 100) return;
+      lastTimerUpdateAt = now;
+      const exposureSeconds = exposureTracker.openMs / 1000;
+      const targetSeconds = Number(ui.target.value);
+      ui.rate.textContent = exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
+      ui.ring.style.setProperty("--progress", `${Math.min(360, (exposureSeconds / targetSeconds) * 360)}deg`);
     }
 
     function showBlinkReminder(test = false, reason = "", mode = "exposure") {
@@ -848,6 +856,7 @@
         nextBreakAt = startedAt + 20 * 60 * 1000;
         calibrationUntil = startedAt + 3000;
         lastHistorySampleAt = Date.now();
+        lastTimerUpdateAt = -Infinity;
         lastStatsUpdateAt = -Infinity;
         lastMeterUpdateAt = -Infinity;
         ui.panel.classList.add("live");
@@ -1028,6 +1037,7 @@
           }
         } catch (error) { console.warn("Frame skipped", error); }
       }
+      updateTimerDisplay(now);
       updateStats(now);
       animationId = requestAnimationFrame(loop);
     }
