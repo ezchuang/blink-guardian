@@ -48,6 +48,10 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /id="miniMonitorPanel"/);
     assert.match(html, /id="miniRateValue">0</);
     assert.match(html, /window\.open\(miniUrl\.href, "blinkGuardianMonitor"/);
+    assert.match(html, /popup,width=240,height=320/);
+    assert.doesNotMatch(html, /searchParams\.set\("autostart"/);
+    assert.match(html, /function primeAudio\(\)/);
+    assert.match(html, /id="miniSoundButton"[^>]+aria-pressed="true">音效開</);
     assert.match(html, /navigator\.locks\.request\(MONITOR_LOCK_NAME, \{ ifAvailable: true \}/);
     assert.match(html, /new BroadcastChannel\("blink-guardian"\)/);
     assert.match(html, /standardFps: 15, degradedFps: 12/);
