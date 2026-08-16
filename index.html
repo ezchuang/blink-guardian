@@ -143,38 +143,41 @@
     .mini-launch { min-height: 44px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.62); color: var(--green); cursor: pointer; font-weight: 720; }
 
     .mini-monitor-panel { display: none; }
-    body.mini-mode { min-width: 210px; overflow: hidden; background: var(--paper); }
-    body.mini-mode .shell { width: 100%; height: 100vh; padding: 0; }
+    body.mini-mode { min-width: 210px; min-height: 100vh; display: grid; place-items: center; overflow: auto; background: var(--paper); }
+    body.mini-mode .shell { width: min(100%, 320px); height: min(100vh, 240px); padding: 0; }
     body.mini-mode header, body.mini-mode .hero, body.mini-mode .stats, body.mini-mode .how, body.mini-mode .evidence, body.mini-mode footer, body.mini-mode .history-modal { display: none; }
-    body.mini-mode .monitor { height: 100vh; border: 0; border-radius: 0; box-shadow: none; background: var(--paper); }
-    body.mini-mode .monitor-grid { display: block; min-height: 100vh; }
+    body.mini-mode .monitor { height: 100%; border: 0; border-radius: 0; box-shadow: none; background: var(--paper); }
+    body.mini-mode .monitor-grid { display: block; height: 100%; min-height: 100%; }
     body.mini-mode .camera-panel { position: fixed; z-index: 20; inset: 0; min-height: 0; pointer-events: none; background: transparent; }
+    body.mini-mode .camera-panel::after { display: none; }
     body.mini-mode .camera-panel > :not(video):not(.reminder) { display: none; }
     body.mini-mode .camera-panel > video { width: 1px; height: 1px; opacity: 0; }
     body.mini-mode .reminder { position: fixed; }
     body.mini-mode .reminder.show { pointer-events: auto; }
-    body.mini-mode .mini-monitor-panel { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; padding: 14px; }
+    body.mini-mode .mini-monitor-panel { height: 100%; min-height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 6px; padding: 10px; }
     .mini-monitor-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
     .mini-brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 780; }
-    .mini-brand .brand-mark { width: 27px; height: 18px; transform: scale(.75); transform-origin: left center; margin-right: -7px; }
+    .mini-brand .brand-mark { width: 27px; height: 18px; transform: scale(.75); transform-origin: left center; }
     .mini-live { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
     .mini-live i { width: 7px; height: 7px; border-radius: 50%; background: #b9c0bc; }
     .mini-live.live i { background: var(--green); box-shadow: 0 0 0 4px rgba(18,102,79,.11); }
-    .mini-counter { display: grid; place-items: center; flex: 1; min-height: 80px; text-align: center; }
+    .mini-main { display: grid; grid-template-columns: minmax(96px, .72fr) minmax(0, 1.28fr); gap: 6px; min-height: 0; }
+    .mini-counter { display: grid; place-items: center; min-height: 64px; padding: 6px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.5); text-align: center; }
     .mini-counter-value { display: flex; align-items: baseline; justify-content: center; gap: 8px; }
-    .mini-counter strong { font-family: Georgia, serif; font-size: clamp(62px, 27vw, 78px); line-height: .85; font-weight: 500; letter-spacing: -.08em; font-variant-numeric: tabular-nums; }
+    .mini-counter strong { font-family: Georgia, serif; font-size: clamp(50px, 19vw, 66px); line-height: .85; font-weight: 500; letter-spacing: -.08em; font-variant-numeric: tabular-nums; }
     .mini-counter-value span { color: var(--muted); font-size: 13px; }
-    .mini-counter p { margin: 10px 0 0; color: var(--muted); font-size: 11px; }
-    .mini-state { padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.52); }
-    .mini-state strong { display: block; margin: 0; font-size: 13px; }
+    .mini-counter p { margin: 6px 0 0; color: var(--muted); font-size: 10px; }
+    .mini-state { display: grid; place-items: center; padding: 7px 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.52); text-align: center; }
+    .mini-state strong { display: block; margin: 0; font-size: 13px; line-height: 1.35; }
     .mini-state span { color: var(--muted); font-size: 11px; line-height: 1.45; }
     body.mini-mode .mini-state span { display: none; }
-    .mini-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-    .mini-summary div { padding: 7px 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.42); }
+    .mini-summary { display: grid; grid-template-columns: 1fr 1fr 1.18fr; gap: 6px; }
+    .mini-summary div { padding: 5px 8px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.42); }
     .mini-summary span { display: block; color: var(--muted); font-size: 9px; }
-    .mini-summary strong { display: block; margin-top: 3px; font-size: 15px; font-variant-numeric: tabular-nums; }
-    .mini-controls { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; margin-top: 8px; }
-    .mini-controls button { min-height: 38px; padding: 7px 9px; white-space: nowrap; font-size: 11px; }
+    .mini-summary strong { display: block; margin-top: 2px; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .mini-summary .secondary { min-height: 100%; border-color: var(--line); border-radius: 10px; background: rgba(255,255,255,.62); color: var(--green); padding: 5px 7px; font-size: 10px; white-space: nowrap; }
+    .mini-controls { display: grid; grid-template-columns: .82fr 1.18fr; gap: 6px; }
+    .mini-controls button { min-height: 34px; padding: 6px 9px; white-space: nowrap; font-size: 11px; }
     .mini-controls .secondary { border-color: var(--line); background: rgba(255,255,255,.62); color: var(--green); }
     body.mobile-compact .mini-launch { display: none; }
     body.mobile-compact .eye-art, body.mobile-compact .reminder-card .big-eye { animation: none; }
@@ -353,21 +356,23 @@
             <div class="mini-brand"><span class="brand-mark" aria-hidden="true"></span>眨眼守門員</div>
             <div class="mini-live" id="miniLiveLabel"><i aria-hidden="true"></i><span id="miniStatusText">尚未開始</span></div>
           </div>
-          <div class="mini-counter">
-            <div>
-              <div class="mini-counter-value"><strong id="miniRateValue">0</strong><span>秒</span></div>
-              <p>連續開眼時間</p>
+          <div class="mini-main">
+            <div class="mini-counter">
+              <div>
+                <div class="mini-counter-value"><strong id="miniRateValue">0</strong><span>秒</span></div>
+                <p>連續開眼時間</p>
+              </div>
             </div>
+            <div class="mini-state"><strong id="miniCameraTitle">準備好就開始</strong><span id="miniCameraHint">這個視窗不顯示鏡頭畫面，但仍會在裝置上分析眼睛狀態。</span></div>
           </div>
-          <div class="mini-state"><strong id="miniCameraTitle">準備好就開始</strong><span id="miniCameraHint">這個視窗不顯示鏡頭畫面，但仍會在裝置上分析眼睛狀態。</span></div>
           <div class="mini-summary">
             <div><span>本次有效閉合</span><strong id="miniTotalBlinks">0</strong></div>
             <div><span>近 1 分鐘</span><strong><b id="miniLastBlink">—</b> 次</strong></div>
+            <button class="secondary" id="miniSoundButton" type="button" aria-label="切換提示音" aria-pressed="true">音效開</button>
           </div>
           <div class="mini-controls">
             <button class="primary" id="miniToggleButton" type="button">開始監測</button>
-            <button class="secondary" id="miniSoundButton" type="button" aria-label="切換提示音" aria-pressed="true">音效開</button>
-            <button class="secondary" id="fullModeButton" type="button">展開</button>
+            <button class="secondary" id="fullModeButton" type="button">回到完整模式</button>
           </div>
         </section>
       </div>
@@ -1091,7 +1096,7 @@
       miniUrl.searchParams.set("target", ui.target.value);
       miniUrl.searchParams.set("sensitivity", ui.sensitivity.value);
       miniUrl.searchParams.set("sound", soundOn ? "1" : "0");
-      miniWindow = window.open(miniUrl.href, "blinkGuardianMonitor", "popup,width=240,height=320");
+      miniWindow = window.open(miniUrl.href, "blinkGuardianMonitor", "popup,width=320,height=240");
       if (!miniWindow) {
         toast("瀏覽器封鎖了迷你視窗，請允許此網站開啟彈出式視窗。");
         return;

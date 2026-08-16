@@ -48,7 +48,7 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /id="miniMonitorPanel"/);
     assert.match(html, /id="miniRateValue">0</);
     assert.match(html, /window\.open\(miniUrl\.href, "blinkGuardianMonitor"/);
-    assert.match(html, /popup,width=240,height=320/);
+    assert.match(html, /popup,width=320,height=240/);
     assert.doesNotMatch(html, /searchParams\.set\("autostart"/);
     assert.match(html, /function primeAudio\(\)/);
     assert.match(html, /id="miniSoundButton"[^>]+aria-pressed="true">音效開</);
