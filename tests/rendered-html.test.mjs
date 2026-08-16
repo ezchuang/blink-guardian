@@ -21,7 +21,8 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /AdaptiveInferenceScheduler/);
     assert.match(html, /getBlinkGuardianDiagnostics/);
     assert.match(html, /function updateTimerDisplay\(now\)/);
-    assert.match(html, /now - lastTimerUpdateAt < 20/);
+    assert.match(html, /TIMER_UPDATE_INTERVAL = MINI_MODE \|\| MOBILE_COMPACT \? 1000 : 20/);
+    assert.match(html, /now - lastTimerUpdateAt < TIMER_UPDATE_INTERVAL/);
     assert.match(html, /exposureTracker\.openMs \+ projectedOpenMs/);
     assert.match(html, /updateTimerDisplay\(now\);/);
     assert.match(html, /@mediapipe\/tasks-vision@\$\{MP_VERSION\}/);
@@ -44,5 +45,14 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /localStorage\.setItem\(HISTORY_KEY/);
     assert.match(html, /visibilitychange/);
     assert.match(html, /頁面進入背景或視窗最小化/);
+    assert.match(html, /id="miniMonitorPanel"/);
+    assert.match(html, /id="miniRateValue">0</);
+    assert.match(html, /window\.open\(miniUrl\.href, "blinkGuardianMonitor"/);
+    assert.match(html, /navigator\.locks\.request\(MONITOR_LOCK_NAME, \{ ifAvailable: true \}/);
+    assert.match(html, /new BroadcastChannel\("blink-guardian"\)/);
+    assert.match(html, /standardFps: 15, degradedFps: 12/);
+    assert.match(html, /width: \{ ideal: 480, max: 640 \}/);
+    assert.match(html, /frameRate: \{ ideal: 15, max: 20 \}/);
+    assert.match(html, /Math\.min\(MOBILE_COMPACT \? 1 : 2, window\.devicePixelRatio/);
   }
 });

@@ -139,6 +139,48 @@
     .primary:hover { transform: translateY(-1px); background: var(--green); }
     .primary:disabled { opacity: .55; cursor: wait; transform: none; }
     .secondary { border: 1px solid rgba(255,255,255,.35); background: rgba(12,20,16,.32); color: white; border-radius: 11px; padding: 9px 12px; cursor: pointer; backdrop-filter: blur(8px); }
+    .monitor-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .mini-launch { min-height: 44px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.62); color: var(--green); cursor: pointer; font-weight: 720; }
+
+    .mini-monitor-panel { display: none; }
+    body.mini-mode { min-width: 300px; overflow: hidden; background: var(--paper); }
+    body.mini-mode .shell { width: 100%; height: 100vh; padding: 0; }
+    body.mini-mode header, body.mini-mode .hero, body.mini-mode .stats, body.mini-mode .how, body.mini-mode .evidence, body.mini-mode footer, body.mini-mode .history-modal { display: none; }
+    body.mini-mode .monitor { height: 100vh; border: 0; border-radius: 0; box-shadow: none; background: var(--paper); }
+    body.mini-mode .monitor-grid { display: block; min-height: 100vh; }
+    body.mini-mode .camera-panel { position: fixed; z-index: 20; inset: 0; min-height: 0; pointer-events: none; background: transparent; }
+    body.mini-mode .camera-panel > :not(video):not(.reminder) { display: none; }
+    body.mini-mode .camera-panel > video { width: 1px; height: 1px; opacity: 0; }
+    body.mini-mode .reminder { position: fixed; }
+    body.mini-mode .reminder.show { pointer-events: auto; }
+    body.mini-mode .mini-monitor-panel { min-height: 100vh; display: flex; flex-direction: column; padding: 22px; }
+    .mini-monitor-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .mini-brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 780; }
+    .mini-brand .brand-mark { width: 27px; height: 18px; transform: scale(.75); transform-origin: left center; margin-right: -7px; }
+    .mini-live { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+    .mini-live i { width: 7px; height: 7px; border-radius: 50%; background: #b9c0bc; }
+    .mini-live.live i { background: var(--green); box-shadow: 0 0 0 4px rgba(18,102,79,.11); }
+    .mini-counter { display: grid; place-items: center; flex: 1; min-height: 210px; text-align: center; }
+    .mini-counter-value { display: flex; align-items: baseline; justify-content: center; gap: 8px; }
+    .mini-counter strong { font-family: Georgia, serif; font-size: clamp(88px, 30vw, 130px); line-height: .85; font-weight: 500; letter-spacing: -.08em; font-variant-numeric: tabular-nums; }
+    .mini-counter-value span { color: var(--muted); font-size: 16px; }
+    .mini-counter p { margin: 18px 0 0; color: var(--muted); font-size: 13px; }
+    .mini-state { padding: 14px 16px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.52); }
+    .mini-state strong { display: block; margin-bottom: 5px; font-size: 15px; }
+    .mini-state span { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .mini-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .mini-summary div { padding: 12px 14px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.42); }
+    .mini-summary span { display: block; color: var(--muted); font-size: 10px; }
+    .mini-summary strong { display: block; margin-top: 5px; font-size: 18px; font-variant-numeric: tabular-nums; }
+    .mini-controls { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 12px; }
+    .mini-controls .secondary { border-color: var(--line); background: rgba(255,255,255,.62); color: var(--green); }
+    body.mobile-compact .mini-launch { display: none; }
+    body.mobile-compact .eye-art, body.mobile-compact .reminder-card .big-eye { animation: none; }
+    body.mobile-compact .chart-wrap canvas, body.mobile-compact .chart-note { display: none; }
+    body.mobile-compact .chart-wrap { min-height: 0; }
+    body.mobile-compact .chart-empty { display: none; }
+    body.mobile-compact .history-card { padding-block: 12px; }
+    body.mobile-compact .history-head { margin: 0; }
 
     .reminder { position: absolute; z-index: 4; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(13,25,19,.79); backdrop-filter: blur(12px); opacity: 0; pointer-events: none; transition: opacity .25s; }
     .reminder.show { opacity: 1; pointer-events: auto; }
@@ -297,9 +339,34 @@
               <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="6" value="3" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">標準</strong></div>
             </div>
             <div class="setting-row"><span>提示音</span><button class="toggle" id="soundToggle" type="button" aria-label="切換提示音" aria-pressed="true"></button></div>
-            <button class="primary" id="startButton" type="button">開啟鏡頭並開始</button>
+            <div class="monitor-actions">
+              <button class="mini-launch" id="miniLaunchButton" type="button">開啟迷你監測窗</button>
+              <button class="primary" id="startButton" type="button">開啟鏡頭並開始</button>
+            </div>
           </div>
         </aside>
+
+        <section class="mini-monitor-panel" id="miniMonitorPanel" aria-label="迷你眨眼監測器">
+          <div class="mini-monitor-head">
+            <div class="mini-brand"><span class="brand-mark" aria-hidden="true"></span>眨眼守門員</div>
+            <div class="mini-live" id="miniLiveLabel"><i aria-hidden="true"></i><span id="miniStatusText">尚未開始</span></div>
+          </div>
+          <div class="mini-counter">
+            <div>
+              <div class="mini-counter-value"><strong id="miniRateValue">0</strong><span>秒</span></div>
+              <p>連續開眼時間</p>
+            </div>
+          </div>
+          <div class="mini-state"><strong id="miniCameraTitle">準備好就開始</strong><span id="miniCameraHint">這個視窗不顯示鏡頭畫面，但仍會在裝置上分析眼睛狀態。</span></div>
+          <div class="mini-summary">
+            <div><span>本次有效閉合</span><strong id="miniTotalBlinks">0</strong></div>
+            <div><span>近 1 分鐘</span><strong><b id="miniLastBlink">—</b> 次</strong></div>
+          </div>
+          <div class="mini-controls">
+            <button class="primary" id="miniToggleButton" type="button">開始監測</button>
+            <button class="secondary" id="fullModeButton" type="button">完整模式</button>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -364,6 +431,12 @@
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
     const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
     const MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+    const pageParams = new URLSearchParams(location.search);
+    const MINI_MODE = pageParams.get("mode") === "mini";
+    const MOBILE_COMPACT = !MINI_MODE && window.matchMedia("(max-width: 600px), (max-width: 900px) and (pointer: coarse)").matches;
+    const TIMER_UPDATE_INTERVAL = MINI_MODE || MOBILE_COMPACT ? 1000 : 20;
+    document.body.classList.toggle("mini-mode", MINI_MODE);
+    document.body.classList.toggle("mobile-compact", MOBILE_COMPACT);
 
     const $ = (id) => document.getElementById(id);
     const ui = {
@@ -374,6 +447,9 @@
       sensitivity: $("sensitivityRange"), sensitivityValue: $("sensitivityValue"),
       sound: $("soundToggle"), start: $("startButton"), reminder: $("reminder"), reminderTitle: $("reminderTitle"),
       reminderCopy: $("reminderCopy"), dismiss: $("dismissReminder"), test: $("testButton"), toast: $("toast"),
+      miniLaunch: $("miniLaunchButton"), miniToggle: $("miniToggleButton"), fullMode: $("fullModeButton"),
+      miniLive: $("miniLiveLabel"), miniStatus: $("miniStatusText"), miniRate: $("miniRateValue"),
+      miniTitle: $("miniCameraTitle"), miniHint: $("miniCameraHint"), miniTotal: $("miniTotalBlinks"), miniLast: $("miniLastBlink"),
       compactChart: $("compactChart"), compactEmpty: $("compactEmpty"), compactChartWrap: $("compactChartWrap"),
       expandChart: $("expandChart"), historyModal: $("historyModal"), closeHistory: $("closeHistory"),
       windowSwitcher: $("windowSwitcher"), largeChart: $("largeChart"), largeEmpty: $("largeEmpty"),
@@ -394,7 +470,7 @@
     const blinkDetector = new AngleRobustBlinkDetector({ sensitivity: DEFAULT_SENSITIVITY });
     const exposureTracker = new OpenEyeExposureTracker();
     const blinkTrendTracker = new BlinkTrendTracker();
-    const inferenceScheduler = new AdaptiveInferenceScheduler();
+    const inferenceScheduler = new AdaptiveInferenceScheduler(MOBILE_COMPACT ? { standardFps: 15, degradedFps: 12 } : {});
     let currentEyeState = "uncertain";
     let faceLastSeen = 0;
     let lastReminderAt = 0;
@@ -418,6 +494,10 @@
     const HISTORY_SAMPLE_INTERVAL = 30000;
     const OPEN_REMINDER_COOLDOWN = 60000;
     const TREND_REMINDER_COOLDOWN = 120000;
+    const MONITOR_LOCK_NAME = "blink-guardian-active-monitor";
+    const monitorChannel = "BroadcastChannel" in window ? new BroadcastChannel("blink-guardian") : null;
+    let releaseMonitorLock = null;
+    let miniWindow = null;
     let history = loadHistory();
 
     function setStatus(label, title, hint, isLive = false) {
@@ -425,6 +505,28 @@
       if (ui.title.textContent !== title) ui.title.textContent = title;
       if (ui.hint.textContent !== hint) ui.hint.textContent = hint;
       if (ui.live.classList.contains("live") !== isLive) ui.live.classList.toggle("live", isLive);
+      if (ui.miniStatus.textContent !== label) ui.miniStatus.textContent = label;
+      if (ui.miniTitle.textContent !== title) ui.miniTitle.textContent = title;
+      if (ui.miniHint.textContent !== hint) ui.miniHint.textContent = hint;
+      if (ui.miniLive.classList.contains("live") !== isLive) ui.miniLive.classList.toggle("live", isLive);
+    }
+
+    function acquireMonitorLock() {
+      if (!("locks" in navigator)) return Promise.resolve(true);
+      return new Promise((resolve) => {
+        navigator.locks.request(MONITOR_LOCK_NAME, { ifAvailable: true }, async (lock) => {
+          if (!lock) { resolve(false); return; }
+          resolve(true);
+          await new Promise((release) => { releaseMonitorLock = release; });
+          releaseMonitorLock = null;
+        }).catch(() => resolve(false));
+      });
+    }
+
+    function releaseOwnership() {
+      releaseMonitorLock?.();
+      releaseMonitorLock = null;
+      monitorChannel?.postMessage({ type: "monitor-stopped", mode: MINI_MODE ? "mini" : "full" });
     }
 
     function toast(message) {
@@ -503,6 +605,7 @@
       history.events = history.events.filter((item) => item.t >= cutoff);
       try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
       catch { toast("無法寫入本機紀錄；瀏覽器儲存空間可能已停用。"); }
+      monitorChannel?.postMessage({ type: "history-updated" });
     }
 
     function recordEvent(type, label, detail = "") {
@@ -543,7 +646,7 @@
       const rect = canvas.getBoundingClientRect();
       const width = Math.max(1, rect.width);
       const height = Math.max(1, rect.height);
-      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      const ratio = Math.min(MOBILE_COMPACT ? 1 : 2, window.devicePixelRatio || 1);
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       const ctx = canvas.getContext("2d");
@@ -709,8 +812,10 @@
       const now = performance.now();
       if (!force && now - lastChartDrawAt < 2000) return;
       lastChartDrawAt = now;
-      const compactData = drawChart(ui.compactChart, 60, false);
-      ui.compactEmpty.hidden = compactData.samples.length > 0;
+      if (!MOBILE_COMPACT && !MINI_MODE) {
+        const compactData = drawChart(ui.compactChart, 60, false);
+        ui.compactEmpty.hidden = compactData.samples.length > 0;
+      }
       if (ui.historyModal.classList.contains("show")) {
         const largeData = drawChart(ui.largeChart, historyWindowMinutes, true);
         ui.largeEmpty.hidden = largeData.samples.length > 0;
@@ -735,6 +840,8 @@
       ui.total.textContent = blinks.length;
       ui.last.textContent = trend.observedMs >= 5000 ? Math.min(rate, 99) : "—";
       ui.time.textContent = formatTime(elapsed);
+      ui.miniTotal.textContent = blinks.length;
+      ui.miniLast.textContent = trend.observedMs >= 5000 ? Math.min(rate, 99) : "—";
       ui.estimate.textContent = "";
 
       const facePresent = now - faceLastSeen < 1800;
@@ -754,14 +861,16 @@
     }
 
     function updateTimerDisplay(now) {
-      if (!running || document.hidden || now - lastTimerUpdateAt < 20) return;
+      if (!running || document.hidden || now - lastTimerUpdateAt < TIMER_UPDATE_INTERVAL) return;
       lastTimerUpdateAt = now;
       const projectedOpenMs = currentEyeState === "open" && now - faceLastSeen < 1800 && exposureTracker.lastAt !== null
         ? Math.min(150, Math.max(0, now - exposureTracker.lastAt))
         : 0;
       const exposureSeconds = (exposureTracker.openMs + projectedOpenMs) / 1000;
       const targetSeconds = Number(ui.target.value);
-      ui.rate.textContent = exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
+      const wholeSeconds = Math.floor(exposureSeconds);
+      ui.rate.textContent = MINI_MODE || MOBILE_COMPACT ? String(wholeSeconds) : exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
+      ui.miniRate.textContent = String(wholeSeconds);
       ui.ring.style.setProperty("--progress", `${Math.min(360, (exposureSeconds / targetSeconds) * 360)}deg`);
     }
 
@@ -828,11 +937,28 @@
     async function start() {
       ui.start.disabled = true;
       ui.start.textContent = "準備中…";
+      ui.miniToggle.disabled = true;
+      ui.miniToggle.textContent = "準備中…";
       try {
+        const ownsLock = await acquireMonitorLock();
+        if (!ownsLock) {
+          setStatus("已有監測", "另一個視窗正在使用鏡頭", "同一時間只會保留一個眨眼監測器；請回到原本的監測視窗。", false);
+          toast("監測已在另一個視窗中執行。");
+          ui.start.disabled = false;
+          ui.start.textContent = "再試一次";
+          ui.miniToggle.disabled = false;
+          ui.miniToggle.textContent = "再試一次";
+          return;
+        }
         landmarker ||= await createLandmarker();
         setStatus("等待權限", "請允許使用鏡頭", "影像只會在這個瀏覽器分頁中處理，不會上傳。 ");
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
+          video: MOBILE_COMPACT ? {
+            facingMode: "user",
+            width: { ideal: 480, max: 640 },
+            height: { ideal: 360, max: 480 },
+            frameRate: { ideal: 15, max: 20 }
+          } : {
             facingMode: "user",
             width: { ideal: 640, max: 960 },
             height: { ideal: 480, max: 720 },
@@ -865,16 +991,22 @@
         ui.panel.classList.add("live");
         ui.start.disabled = false;
         ui.start.textContent = "停止監測";
+        ui.miniToggle.disabled = false;
+        ui.miniToggle.textContent = "停止監測";
         setStatus("校正 3 秒", "自然看著螢幕", "保持臉部在框內，可以正常眨眼。", true);
+        monitorChannel?.postMessage({ type: "monitor-started", mode: MINI_MODE ? "mini" : "full" });
         lastVideoTime = -1;
         loop();
       } catch (error) {
         console.error(error);
+        releaseOwnership();
         const permissionDenied = error?.name === "NotAllowedError" || error?.name === "PermissionDeniedError";
         setStatus("無法開始", permissionDenied ? "鏡頭權限未開啟" : "偵測器載入失敗", permissionDenied ? "請在瀏覽器網址列旁開啟鏡頭權限後再試一次。" : "請確認網路連線，重新整理後再試一次。 ");
         toast(permissionDenied ? "需要鏡頭權限才能監測眨眼。" : "目前無法載入偵測模型。 ");
         ui.start.disabled = false;
         ui.start.textContent = "再試一次";
+        ui.miniToggle.disabled = false;
+        ui.miniToggle.textContent = "再試一次";
       }
     }
 
@@ -895,8 +1027,11 @@
       blinkTrendTracker.reset();
       currentEyeState = "uncertain";
       inferenceScheduler.reset();
+      releaseOwnership();
       updateSensitivity(DEFAULT_SENSITIVITY);
       ui.start.textContent = "重新開始監測";
+      ui.miniToggle.textContent = "重新開始監測";
+      ui.miniRate.textContent = "0";
       setStatus("已停止", "鏡頭已關閉", "本次資料只存在記憶體中，重新開始時會清除。 ");
     }
 
@@ -920,6 +1055,38 @@
     function finishCalibration() {
       blinkDetector.finishCalibration();
       setStatus("監測中", "保持自然就好", "會依臉部角度調整左右眼的判定權重。", true);
+    }
+
+    function openMiniMonitor() {
+      if (MOBILE_COMPACT) {
+        document.querySelector(".monitor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        toast("手機版會在目前頁面使用省電監測模式。");
+        return;
+      }
+      if (miniWindow && !miniWindow.closed) {
+        miniWindow.focus();
+        return;
+      }
+      const miniUrl = new URL(location.href);
+      miniUrl.searchParams.set("mode", "mini");
+      miniUrl.searchParams.set("autostart", "1");
+      miniUrl.searchParams.set("target", ui.target.value);
+      miniUrl.searchParams.set("sensitivity", ui.sensitivity.value);
+      miniWindow = window.open(miniUrl.href, "blinkGuardianMonitor", "popup,width=360,height=520");
+      if (!miniWindow) {
+        toast("瀏覽器封鎖了迷你視窗，請允許此網站開啟彈出式視窗。");
+        return;
+      }
+      if (running) stop();
+      miniWindow.focus();
+    }
+
+    function returnToFullMode() {
+      const fullUrl = new URL(location.href);
+      fullUrl.search = "";
+      if (window.opener && !window.opener.closed) window.opener.focus();
+      else window.open(fullUrl.href, "blinkGuardianMain");
+      window.close();
     }
 
     function handleVisibilityChange() {
@@ -1046,6 +1213,9 @@
     }
 
     ui.start.addEventListener("click", () => running ? stop() : start());
+    ui.miniToggle.addEventListener("click", () => running ? stop() : start());
+    ui.miniLaunch.addEventListener("click", openMiniMonitor);
+    ui.fullMode.addEventListener("click", returnToFullMode);
     ui.dismiss.addEventListener("click", dismissReminder);
     ui.test.addEventListener("click", () => showBlinkReminder(true));
     ui.sound.addEventListener("click", () => {
@@ -1073,14 +1243,35 @@
     document.addEventListener("keydown", (event) => { if (event.key === "Escape" && ui.historyModal.classList.contains("show")) closeHistory(); });
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("resize", () => drawHistoryCharts(true));
-    window.addEventListener("pagehide", () => { stream?.getTracks().forEach((track) => track.stop()); landmarker?.close?.(); });
+    window.addEventListener("pagehide", () => {
+      stream?.getTracks().forEach((track) => track.stop());
+      releaseOwnership();
+      monitorChannel?.close();
+      landmarker?.close?.();
+    });
+    monitorChannel?.addEventListener("message", (event) => {
+      if (event.data?.type === "history-updated") {
+        history = loadHistory();
+        if (!document.hidden && !MINI_MODE) drawHistoryCharts(true);
+      } else if (event.data?.type === "monitor-started" && !running && event.data.mode === "mini") {
+        toast("迷你視窗正在監測；此頁不會重複啟用鏡頭。");
+      }
+    });
     window.getBlinkGuardianDiagnostics = () => ({
       camera: stream?.getVideoTracks?.()[0]?.getSettings?.() || null,
       inference: inferenceScheduler.snapshot(),
       browser: navigator.userAgent
     });
-    updateSensitivity(DEFAULT_SENSITIVITY);
+    if (MINI_MODE) document.title = "迷你監測｜眨眼守門員";
+    const initialTarget = Number(pageParams.get("target"));
+    if (MINI_MODE && initialTarget >= 6 && initialTarget <= 20) {
+      ui.target.value = String(initialTarget);
+      ui.targetValue.textContent = `${initialTarget} 秒`;
+    }
+    const initialSensitivity = MINI_MODE ? Number(pageParams.get("sensitivity")) : DEFAULT_SENSITIVITY;
+    updateSensitivity(initialSensitivity >= 1 && initialSensitivity <= 6 ? initialSensitivity : DEFAULT_SENSITIVITY);
     drawHistoryCharts(true);
+    if (MINI_MODE && pageParams.get("autostart") === "1") start();
   </script>
 </body>
 </html>
