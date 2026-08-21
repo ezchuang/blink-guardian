@@ -60,3 +60,12 @@ test("ships the Blink Guardian experience", async () => {
     assert.match(html, /Math\.min\(MOBILE_COMPACT \? 1 : 2, window\.devicePixelRatio/);
   }
 });
+
+test("resuming monitoring does not consume the reminder cooldown", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  const handler = source.match(/function handleVisibilityChange\(\) \{[\s\S]*?\n    \}/)?.[0];
+
+  assert.ok(handler, "visibility change handler should exist");
+  assert.match(handler, /exposureTracker\.reset\(now\)/);
+  assert.doesNotMatch(handler, /lastReminderAt\s*=/);
+});
