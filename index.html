@@ -170,7 +170,7 @@
     .mini-state { display: grid; place-items: center; padding: 7px 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.52); text-align: center; }
     .mini-state strong { display: block; margin: 0; font-size: 13px; line-height: 1.35; }
     .mini-state span { color: var(--muted); font-size: 11px; line-height: 1.45; }
-    body.mini-mode .mini-state span { display: none; }
+    body.mini-mode .mini-state span { display: block; font-size: 10px; }
     .mini-summary { display: grid; grid-template-columns: 1fr 1fr 1.18fr; gap: 6px; }
     .mini-summary div { padding: 5px 8px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.42); }
     .mini-summary span { display: block; color: var(--muted); font-size: 9px; }
@@ -328,7 +328,7 @@
           </div>
           <div class="mini-stats">
             <div class="mini-stat"><span>本次有效閉合</span><strong id="totalBlinks">0</strong></div>
-            <div class="mini-stat"><span>近 1 分鐘閉合</span><strong><b id="lastBlink">0</b> 次</strong></div>
+            <div class="mini-stat"><span>估算頻率／次每分鐘</span><strong><b id="lastBlink">—</b></strong></div>
           </div>
           <div class="history-card">
             <div class="history-head"><strong>近 1 小時趨勢</strong><button class="expand-chart" id="expandChart" type="button">放大查看</button></div>
@@ -371,7 +371,7 @@
           </div>
           <div class="mini-summary">
             <div><span>本次有效閉合</span><strong id="miniTotalBlinks">0</strong></div>
-            <div><span>近 1 分鐘</span><strong><b id="miniLastBlink">—</b> 次</strong></div>
+            <div><span>估算／次每分</span><strong><b id="miniLastBlink">—</b></strong></div>
             <div class="mini-sound-setting"><span>提示音</span><button class="toggle" id="miniSoundButton" type="button" aria-label="切換提示音" aria-pressed="true"></button></div>
           </div>
           <div class="mini-controls">
@@ -419,7 +419,7 @@
       <h2 id="howTitle">有感提醒，<br>沒有監視感。</h2>
       <div class="steps">
         <div class="step"><div><strong>影像留在瀏覽器</strong><p>鏡頭畫面不會上傳、錄影或儲存；模型只讀取眼睛閉合程度。</p></div></div>
-        <div class="step"><div><strong>兼顧暴露時間與眨眼節奏</strong><p>連續開眼過久會直接提醒；最近一分鐘的有效眨眼持續低於個人節奏，而且當下又一段時間沒眨時，才會發出趨勢提醒。</p></div></div>
+        <div class="step"><div><strong>兼顧暴露時間與眨眼節奏</strong><p>連續開眼達設定秒數時提醒，提醒後至少間隔 60 秒；最近一分鐘的有效眨眼持續低於個人節奏，而且當下又一段時間沒眨時，才會發出趨勢提醒。頻率依可判定的觀測時間換算；換姿勢會暫停計時，超過 3 秒無法判定則重新累計。</p></div></div>
         <div class="step"><div><strong>每 20 分鐘看看遠方</strong><p>持續監測 20 分鐘後，也會提醒你看約 6 公尺外至少 20 秒。</p></div></div>
       </div>
     </section>
@@ -437,7 +437,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker } from "./blink-detector.js";
+    import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, openReminderStatus } from "./blink-detector.js";
 
     const MP_VERSION = "0.10.35";
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
@@ -484,7 +484,8 @@
     const blinkTrendTracker = new BlinkTrendTracker();
     const inferenceScheduler = new AdaptiveInferenceScheduler(MOBILE_COMPACT ? { standardFps: 15, degradedFps: 12 } : {});
     let currentEyeState = "uncertain";
-    let faceLastSeen = 0;
+    let lastDetection = null;
+    let faceLastSeen = -Infinity;
     let lastReminderAt = 0;
     let lastTrendReminderAt = 0;
     let soundOn = !MINI_MODE || pageParams.get("sound") !== "0";
@@ -506,6 +507,7 @@
     const HISTORY_SAMPLE_INTERVAL = 30000;
     const OPEN_REMINDER_COOLDOWN = 60000;
     const TREND_REMINDER_COOLDOWN = 120000;
+    const OBSERVATION_STALE_MS = 250;
     const MONITOR_LOCK_NAME = "blink-guardian-active-monitor";
     const monitorChannel = "BroadcastChannel" in window ? new BroadcastChannel("blink-guardian") : null;
     let releaseMonitorLock = null;
@@ -643,12 +645,15 @@
 
     function recordSample(now, force = false) {
       const wallNow = Date.now();
-      const facePresent = now - faceLastSeen < 1800;
-      if (!running || !facePresent || (!force && document.hidden)) return false;
+      const facePresent = now - faceLastSeen <= OBSERVATION_STALE_MS;
+      const observedMs = blinkTrendTracker.metrics(now).observedMs;
+      if (!running || !facePresent || calibrationUntil || currentEyeState === "uncertain" ||
+          observedMs < 5000 || (!force && document.hidden)) return false;
       if (!force && wallNow - lastHistorySampleAt < HISTORY_SAMPLE_INTERVAL) return false;
       history.samples.push({
         t: wallNow,
         rate: Math.round(blinkTrendTracker.metrics(now).rate),
+        observedMs,
         closureMs: currentClosureDuration(now),
         exposure: exposureTracker.openMs / 1000,
         total: blinks.length
@@ -855,6 +860,30 @@
       return Math.max(0, now - startedAt - inactiveAccumulated - currentHidden);
     }
 
+    function updateMonitoringStatus(now, reminder) {
+      const facePresent = now - faceLastSeen <= OBSERVATION_STALE_MS;
+      if (!facePresent) {
+        setStatus("等待影像", "暫停計時", exposureTracker.continuityLost
+          ? "連續時間已中斷；讓臉部清楚入鏡後重新累計。"
+          : "請讓臉部清楚入鏡；暫時無法判定眼睛狀態。", false);
+      } else if (calibrationUntil || lastDetection?.recalibrating) {
+        setStatus(calibrationUntil ? "開眼校正" : "角度校正", "自然張開眼睛", "請穩定看向螢幕；取得可信的開眼基準後恢復計時。", false);
+      } else if (currentEyeState === "resting") {
+        setStatus("閉眼休息", "開眼計時已歸零", "閉眼期間不會繼續計時，也不會發出眨眼提醒。", true);
+      } else if (currentEyeState === "uncertain") {
+        setStatus("判定不穩", "暫停計時", exposureTracker.continuityLost
+          ? "連續時間已中斷；恢復判定後重新累計。"
+          : "暫時保留先前累計；調整姿勢或光線，讓眼睛清楚入鏡。", false);
+      } else {
+        const collecting = blinkTrendTracker.metrics(now).observedMs < 5000;
+        const hint = reminder.cooldownSeconds > 0
+          ? `開眼提醒間隔中，還有 ${reminder.cooldownSeconds} 秒；計時持續。`
+          : collecting ? "頻率收集中；開眼達設定秒數時會提醒。"
+          : "開眼達設定秒數時會提醒；也會留意近一分鐘的眨眼節奏。";
+        setStatus("張眼中", now - exposureTracker.restartedAt < 5000 ? "連續時間中斷，重新累計" : "保持自然就好", hint, true);
+      }
+    }
+
     function updateStats(now) {
       if (!running || document.hidden) return;
       if (now - lastStatsUpdateAt < 250) return;
@@ -863,7 +892,6 @@
       const trend = blinkTrendTracker.metrics(now);
       const rate = Math.round(trend.rate);
       const targetSeconds = Number(ui.target.value);
-      const exposureSeconds = exposureTracker.openMs / 1000;
       ui.total.textContent = blinks.length;
       ui.last.textContent = trend.observedMs >= 5000 ? Math.min(rate, 99) : "—";
       ui.time.textContent = formatTime(elapsed);
@@ -871,8 +899,13 @@
       ui.miniLast.textContent = trend.observedMs >= 5000 ? Math.min(rate, 99) : "—";
       ui.estimate.textContent = "";
 
-      const facePresent = now - faceLastSeen < 1800;
-      if (facePresent && exposureSeconds >= targetSeconds && now - lastReminderAt > OPEN_REMINDER_COOLDOWN && !ui.reminder.classList.contains("show")) {
+      const facePresent = now - faceLastSeen <= OBSERVATION_STALE_MS;
+      const reminder = openReminderStatus({ now, eyeState: currentEyeState,
+        openMs: exposureTracker.openMs, targetMs: targetSeconds * 1000,
+        lastReminderAt, cooldownMs: OPEN_REMINDER_COOLDOWN, facePresent,
+        reminderVisible: ui.reminder.classList.contains("show") });
+      updateMonitoringStatus(now, reminder);
+      if (reminder.eligible) {
         showBlinkReminder(false, `連續開眼 ${targetSeconds} 秒`, "exposure");
       } else if (
         facePresent &&
@@ -890,14 +923,14 @@
     function updateTimerDisplay(now) {
       if (!running || document.hidden || now - lastTimerUpdateAt < TIMER_UPDATE_INTERVAL) return;
       lastTimerUpdateAt = now;
-      const projectedOpenMs = currentEyeState === "open" && now - faceLastSeen < 1800 && exposureTracker.lastAt !== null
+      const projectedOpenMs = currentEyeState === "open" && now - faceLastSeen <= OBSERVATION_STALE_MS && exposureTracker.lastAt !== null
         ? Math.min(150, Math.max(0, now - exposureTracker.lastAt))
         : 0;
       const exposureSeconds = (exposureTracker.openMs + projectedOpenMs) / 1000;
       const targetSeconds = Number(ui.target.value);
       const wholeSeconds = Math.floor(exposureSeconds);
-      ui.rate.textContent = MINI_MODE || MOBILE_COMPACT ? String(wholeSeconds) : exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
-      ui.miniRate.textContent = String(wholeSeconds);
+      ui.rate.textContent = exposureTracker.continuityLost ? "—" : MINI_MODE || MOBILE_COMPACT ? String(wholeSeconds) : exposureSeconds < 100 ? exposureSeconds.toFixed(1) : "99+";
+      ui.miniRate.textContent = exposureTracker.continuityLost ? "—" : String(wholeSeconds);
       ui.ring.style.setProperty("--progress", `${Math.min(360, (exposureSeconds / targetSeconds) * 360)}deg`);
     }
 
@@ -1000,7 +1033,8 @@
         startedAt = performance.now();
         inactiveAccumulated = 0;
         hiddenStartedAt = 0;
-        faceLastSeen = 0;
+        faceLastSeen = -Infinity;
+        lastDetection = null;
         blinks = [];
         closures = [];
         blinkDetector.resetCalibration();
@@ -1080,9 +1114,11 @@
       }
     }
 
-    function finishCalibration() {
-      blinkDetector.finishCalibration();
-      setStatus("監測中", "保持自然就好", "會依臉部角度調整左右眼的判定權重。", true);
+    function finishCalibration(now) {
+      if (!blinkDetector.finishCalibration(now)) return false;
+      calibrationUntil = 0;
+      exposureTracker.reset(now);
+      return true;
     }
 
     function openMiniMonitor() {
@@ -1137,7 +1173,8 @@
         inactiveAccumulated += hiddenDuration;
         nextBreakAt += hiddenDuration;
         hiddenStartedAt = 0;
-        faceLastSeen = 0;
+        faceLastSeen = -Infinity;
+        lastDetection = null;
         blinkDetector.resetCalibration();
         exposureTracker.reset(now);
         blinkTrendTracker.resetWindow(now);
@@ -1146,7 +1183,7 @@
         calibrationUntil = now + 1500;
         lastVideoTime = -1;
         lastHistorySampleAt = Date.now();
-        setStatus("重新校正", "自然看著螢幕", "約 2 秒後恢復計數；背景期間會在圖表中保留空白。", true);
+        setStatus("重新校正", "自然看著螢幕", "取得可信的開眼基準後恢復計數；背景期間會在圖表中保留空白。", false);
         recordEvent("resume", "恢復監測", "頁面重新回到前景");
         loop();
       }
@@ -1187,20 +1224,22 @@
             faceLastSeen = now;
             const left = blendScore(categories, "eyeBlinkLeft");
             const right = blendScore(categories, "eyeBlinkRight");
-            if (now < calibrationUntil) {
+            if (calibrationUntil !== 0) {
               blinkDetector.addCalibrationFrame(
                 left, right, landmarks,
-                ui.video.videoWidth / Math.max(1, ui.video.videoHeight)
+                ui.video.videoWidth / Math.max(1, ui.video.videoHeight), now
               );
+              exposureTracker.update(now, "uncertain");
+              blinkTrendTracker.update(now, "uncertain");
+              currentEyeState = "uncertain";
               if (now - lastMeterUpdateAt >= 100) {
                 lastMeterUpdateAt = now;
                 ui.left.style.height = `${Math.round(left * 100)}%`;
                 ui.right.style.height = `${Math.round(right * 100)}%`;
               }
-              const seconds = Math.max(1, Math.ceil((calibrationUntil - now) / 1000));
-              ui.status.textContent = `校正 ${seconds} 秒`;
-            } else {
-              if (calibrationUntil !== 0) { calibrationUntil = 0; finishCalibration(); }
+              if (now >= calibrationUntil) finishCalibration(now);
+            }
+            if (calibrationUntil === 0) {
               const detection = blinkDetector.update({
                 now, left, right, landmarks,
                 aspectRatio: ui.video.videoWidth / Math.max(1, ui.video.videoHeight)
@@ -1211,28 +1250,28 @@
                 ui.right.style.height = `${Math.round(detection.rightLevel * 100)}%`;
                 setThresholdMarker(detection.closeThreshold);
               }
-              if (detection.poseChanged) exposureTracker.reset(now);
+              lastDetection = detection;
               exposureTracker.update(now, detection.state);
               blinkTrendTracker.update(now, detection.state);
               currentEyeState = detection.state;
               if (detection.closureStarted) registerRest();
               if (detection.closureEnded) registerBlink(now, detection.closureDuration);
-              if (detection.recalibrating) {
-                setStatus("角度校正", "自然張開眼睛", "正在建立目前角度的開眼基準，約半秒後恢復。", true);
-              } else if (now - faceLastSeen < 500) {
-                setStatus("監測中", "保持自然就好", "角度改變時會切換或建立對應的開眼基準。", true);
-              }
             }
-          } else if (now - faceLastSeen > 1200) {
+          } else {
             blinkDetector.resetMotion();
             exposureTracker.update(now, "uncertain");
             blinkTrendTracker.update(now, "uncertain");
             currentEyeState = "uncertain";
             ui.left.style.height = "0%";
             ui.right.style.height = "0%";
-            setStatus("找不到臉", "回到鏡頭畫面中", "讓臉部完整入鏡，避免背光或太暗的環境。", false);
           }
         } catch (error) { console.warn("Frame skipped", error); }
+      }
+      if (now - faceLastSeen > OBSERVATION_STALE_MS) {
+        blinkDetector.resetMotion();
+        exposureTracker.update(now, "uncertain");
+        blinkTrendTracker.update(now, "uncertain");
+        currentEyeState = "uncertain";
       }
       updateTimerDisplay(now);
       updateStats(now);
@@ -1284,6 +1323,10 @@
     window.getBlinkGuardianDiagnostics = () => ({
       camera: stream?.getVideoTracks?.()[0]?.getSettings?.() || null,
       inference: inferenceScheduler.snapshot(),
+      detection: { state: currentEyeState, calibrating: Boolean(calibrationUntil || lastDetection?.recalibrating),
+        pose: blinkDetector.activePoseKey, baselineLeft: blinkDetector.openLeftEar,
+        baselineRight: blinkDetector.openRightEar, openMs: exposureTracker.openMs,
+        continuityLost: exposureTracker.continuityLost },
       browser: navigator.userAgent
     });
     if (MINI_MODE) document.title = "迷你監測｜眨眼守門員";
