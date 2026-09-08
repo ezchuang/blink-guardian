@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey } from "../blink-detector.js";
+import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, eyeVisibilityWeights, poseProfileKey, openReminderStatus } from "../blink-detector.js";
 
 function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenness = 1, noseY = .48) {
   const points = Array.from({ length: 388 }, () => ({ x: 0, y: 0 }));
@@ -26,19 +26,16 @@ function landmarks(leftWidth = .1, rightWidth = .1, leftOpenness = 1, rightOpenn
 
 function calibratedDetector() {
   const detector = new AngleRobustBlinkDetector();
-  for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05, landmarks());
-  detector.finishCalibration();
+  for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05, landmarks(), 1, index * 33);
+  assert.equal(detector.finishCalibration(957), true);
   return detector;
 }
 
 function geometryCalibratedDetector() {
-  const detector = new AngleRobustBlinkDetector();
-  for (let index = 0; index < 30; index += 1) detector.addCalibrationFrame(.05, .05, landmarks());
-  detector.finishCalibration();
-  return detector;
+  return calibratedDetector();
 }
 
-function settlePose(detector, poseLandmarks, left = .05, right = .05, opennessFrames = 18) {
+function settlePose(detector, poseLandmarks, left = .05, right = .05, opennessFrames = 30) {
   const results = [];
   for (let index = 0; index < opennessFrames; index += 1) {
     results.push(detector.update({
@@ -174,6 +171,143 @@ test("builds and reuses a baseline for a changed face angle", () => {
   assert.equal(switched.state, "open");
 });
 
+test("does not finish initial calibration with closed eyes, missing geometry or too few samples", () => {
+  for (const points of [landmarks(.1, .1, .05, .05), []]) {
+    const detector = new AngleRobustBlinkDetector();
+    for (let now = 0; now <= 3000; now += 50) detector.addCalibrationFrame(.12, .12, points, 1, now);
+    assert.equal(detector.finishCalibration(3000), false);
+    assert.equal(detector.activePoseKey, null);
+    assert.equal(detector.update({ now: 3050, left: .12, right: .12, landmarks: points }).state, "uncertain");
+  }
+  const detector = new AngleRobustBlinkDetector();
+  detector.addCalibrationFrame(.05, .05, landmarks(), 1, 0);
+  assert.equal(detector.finishCalibration(3000), false);
+});
+
+test("uses stable time, not frame count, to accept calibration across supported frame rates", () => {
+  for (const fps of [12, 15, 20, 30]) {
+    const detector = new AngleRobustBlinkDetector();
+    const interval = 1000 / fps;
+    for (let now = 0; now < 600; now += interval) {
+      detector.addCalibrationFrame(.05, .05, landmarks(), 1, now);
+      assert.equal(detector.finishCalibration(now), false);
+    }
+    for (let now = 600; now <= 1000; now += interval) detector.addCalibrationFrame(.05, .05, landmarks(), 1, now);
+    assert.equal(detector.finishCalibration(1000), true);
+  }
+});
+
+test("minority geometry spikes do not define the open baseline", () => {
+  const detector = new AngleRobustBlinkDetector();
+  for (let index = 0; index < 16; index += 1) {
+    const openness = [4, 8, 12].includes(index) ? 1.7 : 1;
+    detector.addCalibrationFrame(.05, .05, landmarks(.1, .1, openness, openness), 1, index * 50);
+  }
+  assert.equal(detector.finishCalibration(750), true);
+  assert.ok(Math.abs(detector.openLeftEar - .35) < .0001);
+  const result = detector.update({ now: 800, left: .05, right: .05, landmarks: landmarks() });
+  assert.equal(result.state, "open");
+  assert.ok(result.combined < .01);
+});
+
+test("a new pose held closed stays uncertain until stable open samples arrive", () => {
+  const detector = calibratedDetector();
+  const closedPose = landmarks(.1, .1, .05, .05, .58);
+  const openPose = landmarks(.1, .1, .62, .62, .58);
+  for (let now = 1000; now <= 4000; now += 50) {
+    const result = detector.update({ now, left: .12, right: .12, landmarks: closedPose });
+    assert.equal(result.state, "uncertain");
+    assert.equal(result.blink, false);
+  }
+  assert.equal(detector.poseProfiles.has(poseProfileKey(closedPose)), false);
+  let result;
+  for (let now = 4050; now <= 5000; now += 50) result = detector.update({ now, left: .12, right: .12, landmarks: openPose });
+  assert.equal(result.state, "open");
+  assert.ok(Math.abs(detector.openLeftEar - .35 * .62) < .0001);
+});
+
+test("calibrates the visible eye without requiring the occluded eye to open", () => {
+  const detector = calibratedDetector();
+  const angled = landmarks(.16, .04, 1, .05);
+  let result;
+  for (let now = 1000; now <= 2500; now += 50) result = detector.update({ now, left: .05, right: .95, landmarks: angled });
+  assert.equal(result.recalibrating, false);
+  assert.equal(result.state, "open");
+});
+
+test("rejects stale calibration samples and samples mixed between poses", () => {
+  const detector = new AngleRobustBlinkDetector();
+  for (let now = 0; now <= 1000; now += 50) {
+    const pose = now % 100 === 0 ? landmarks() : landmarks(.1, .1, .62, .62, .58);
+    detector.addCalibrationFrame(.05, .05, pose, 1, now);
+  }
+  assert.equal(detector.finishCalibration(1000), false);
+  for (let now = 1050; now <= 2000; now += 50) detector.addCalibrationFrame(.05, .05, landmarks(), 1, now);
+  assert.equal(detector.finishCalibration(2400), false);
+});
+
+test("a pose transition pauses exposure without fabricating a rest or resetting the timer", () => {
+  const detector = calibratedDetector();
+  const tracker = new OpenEyeExposureTracker();
+  tracker.reset(1000);
+  for (let now = 1050; now <= 3000; now += 50) tracker.update(now, "open");
+  const before = tracker.openMs;
+  const angled = landmarks(.1, .1, .62, .62, .58);
+  let resumed = false;
+  for (let now = 3050; now <= 4500; now += 50) {
+    const result = detector.update({ now, left: .12, right: .12, landmarks: angled });
+    tracker.update(now, result.state);
+    assert.equal(result.closureStarted, false);
+    assert.ok(tracker.openMs >= before);
+    if (result.state === "uncertain") assert.equal(tracker.openMs, before);
+    else resumed = true;
+  }
+  assert.equal(resumed, true);
+  assert.ok(tracker.openMs > before);
+});
+
+test("prolonged uncertainty loses continuity and resumes from a new interval", () => {
+  const tracker = new OpenEyeExposureTracker();
+  tracker.reset(0);
+  for (let now = 100; now <= 1000; now += 100) tracker.update(now, "open");
+  tracker.update(1100, "uncertain");
+  assert.equal(tracker.openMs, 1000);
+  tracker.update(2000, "uncertain");
+  assert.equal(tracker.continuityLost, false);
+  tracker.update(4000, "uncertain");
+  assert.equal(tracker.continuityLost, true);
+  assert.equal(tracker.openMs, 0);
+  tracker.update(4050, "open");
+  assert.equal(tracker.continuityLost, false);
+  assert.equal(tracker.restartedAt, 4050);
+  assert.equal(tracker.openMs, 0);
+  assert.equal(tracker.update(4100, "open"), 50);
+  assert.equal(tracker.update(9000, "open"), 0, "a stalled video must not preserve continuity");
+});
+
+test("counts only observed intervals without bridging uncertain gaps", () => {
+  const tracker = new BlinkTrendTracker();
+  tracker.reset(0);
+  for (let now = 50; now <= 10000; now += 50) tracker.update(now, now % 100 === 0 ? "uncertain" : "open");
+  tracker.recordBlink(10000, 100);
+  assert.equal(tracker.metrics(10000).observedMs, 5000);
+  assert.equal(tracker.metrics(10000).rate, 12);
+  tracker.resetWindow(10000);
+  tracker.update(11000, "open");
+  assert.equal(tracker.metrics(11000).observedMs, 250);
+});
+
+test("reminder eligibility matches cooldown and excludes uncertain or resting eyes", () => {
+  const input = { now: 10000, eyeState: "open", openMs: 10000, targetMs: 10000, lastReminderAt: -Infinity };
+  assert.equal(openReminderStatus(input).eligible, true);
+  for (const eyeState of ["uncertain", "resting"]) assert.equal(openReminderStatus({ ...input, eyeState }).eligible, false);
+  assert.equal(openReminderStatus({ ...input, facePresent: false }).eligible, false);
+  assert.equal(openReminderStatus({ ...input, reminderVisible: true }).eligible, false);
+  assert.equal(openReminderStatus({ ...input, openMs: 9999 }).eligible, false);
+  assert.deepEqual(openReminderStatus({ ...input, now: 20000, lastReminderAt: 10000 }), { eligible: false, cooldownSeconds: 50 });
+  assert.deepEqual(openReminderStatus({ ...input, now: 70000, lastReminderAt: 10000 }), { eligible: true, cooldownSeconds: 0 });
+});
+
 test("reminds only after a sustained low blink trend", () => {
   const tracker = new BlinkTrendTracker();
   tracker.reset(0);
@@ -200,6 +334,18 @@ test("excludes uncertain time and credits a long eye rest", () => {
   tracker.recordBlink(20000, 1200);
   assert.equal(tracker.metrics(20000).suppressed, true);
   assert.equal(tracker.shouldRemind(20000, "open"), false);
+});
+
+test("uncertain time does not advance sustained low-trend duration", () => {
+  const tracker = new BlinkTrendTracker();
+  tracker.reset(0);
+  for (let now = 100; now <= 100000; now += 100) tracker.update(now, "open");
+  const before = tracker.metrics(100000).lowDurationMs;
+  assert.ok(before > 0);
+  for (let now = 100100; now <= 102000; now += 100) tracker.update(now, "uncertain");
+  assert.equal(tracker.metrics(102000).lowDurationMs, before);
+  tracker.update(102100, "resting");
+  assert.equal(tracker.metrics(102100).lowDurationMs, before + 100, "short closures must not erase the low trend");
 });
 
 test("limits standard inference to twenty frames per second", () => {

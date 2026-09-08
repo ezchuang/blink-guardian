@@ -1,10 +1,61 @@
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
-function extremeMean(values, count, highest, fallback) {
+function median(values, fallback = 0) {
   if (!values.length) return fallback;
-  const sorted = [...values].sort((a, b) => highest ? b - a : a - b);
-  const selected = sorted.slice(0, Math.min(count, sorted.length));
-  return selected.reduce((sum, value) => sum + value, 0) / selected.length;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// These are plausibility guards, not a claim that a webcam can prove an eye is open.
+// A new pose may shorten the apparent eye height, but collapsed geometry must not
+// become its open baseline just because the blendshape score is low.
+function plausibleOpen(score, ear, referenceEar) {
+  return Number.isFinite(score) && score <= .35 && score >= 0 &&
+    Number.isFinite(ear) && ear >= Math.max(.08, (referenceEar || 0) * .45) && ear <= .65;
+}
+
+class OpenBaselineWindow {
+  constructor() { this.clear(); }
+
+  clear() {
+    this.key = null;
+    this.frames = [];
+  }
+
+  add({ now, key, left, right, geometry, weights, reference = {} }) {
+    if (key !== this.key || (this.frames.length && now - this.frames.at(-1).now > 250)) this.clear();
+    this.key = key;
+    const leftOk = plausibleOpen(left, geometry.leftEar, reference.openLeftEar);
+    const rightOk = plausibleOpen(right, geometry.rightEar, reference.openRightEar);
+    const angled = weights.asymmetry >= .1;
+    const valid = angled ? (weights.left >= weights.right ? leftOk : rightOk) : leftOk && rightOk;
+    if (!valid) { this.frames = []; return; }
+    this.frames.push({ now, left, right, geometry, leftOk, rightOk,
+      useLeft: !angled || weights.left >= weights.right,
+      useRight: !angled || weights.right > weights.left });
+    this.frames = this.frames.filter((frame) => now - frame.now <= 1500);
+  }
+
+  samples(now) {
+    if (this.frames.length < 6 || now - this.frames.at(-1).now > 250) return null;
+    const centerLeft = median(this.frames.map((frame) => frame.geometry.leftEar));
+    const centerRight = median(this.frames.map((frame) => frame.geometry.rightEar));
+    const near = (value, center) => Math.abs(value - center) <= Math.max(.01, center * .2);
+    const stable = this.frames.filter((frame) =>
+      (!frame.useLeft || near(frame.geometry.leftEar, centerLeft)) &&
+      (!frame.useRight || near(frame.geometry.rightEar, centerRight)));
+    if (stable.length < 6 || stable.length / this.frames.length < .75 ||
+        stable.at(-1).now - stable[0].now < 600) return null;
+    const leftFrames = stable.filter((frame) => frame.leftOk);
+    const rightFrames = stable.filter((frame) => frame.rightOk);
+    return {
+      left: leftFrames.map((frame) => frame.left),
+      right: rightFrames.map((frame) => frame.right),
+      leftEar: leftFrames.map((frame) => frame.geometry.leftEar),
+      rightEar: rightFrames.map((frame) => frame.geometry.rightEar)
+    };
+  }
 }
 
 function landmarkDistance(landmarks, first, second, aspectRatio) {
@@ -69,53 +120,43 @@ export class AngleRobustBlinkDetector {
   }
 
   resetCalibration() {
-    this.calibrationLeft = [];
-    this.calibrationRight = [];
-    this.calibrationLeftEar = [];
-    this.calibrationRightEar = [];
+    this.calibrationWindow = new OpenBaselineWindow();
     this.openLeft = .05;
     this.openRight = .05;
     this.openLeftEar = null;
     this.openRightEar = null;
     this.poseProfiles = new Map();
-    this.calibrationPoseKeys = [];
     this.activePoseKey = null;
     this.poseCandidateKey = null;
-    this.poseCandidateFrames = 0;
-    this.poseSamples = null;
+    this.poseCandidateSince = null;
+    this.poseWindow = null;
     this.resetMotion();
   }
 
-  addCalibrationFrame(left, right, landmarks, aspectRatio = 1) {
-    this.calibrationLeft.push(clamp(left));
-    this.calibrationRight.push(clamp(right));
-    const geometry = eyeGeometry(landmarks, aspectRatio);
-    if (geometry.leftEar) this.calibrationLeftEar.push(geometry.leftEar);
-    if (geometry.rightEar) this.calibrationRightEar.push(geometry.rightEar);
-    this.calibrationPoseKeys.push(poseProfileKey(landmarks, aspectRatio));
+  addCalibrationFrame(left, right, landmarks, aspectRatio = 1, now = performance.now()) {
+    this.calibrationWindow.add({ now, left, right,
+      key: poseProfileKey(landmarks, aspectRatio),
+      geometry: eyeGeometry(landmarks, aspectRatio),
+      weights: eyeVisibilityWeights(landmarks, aspectRatio) });
   }
 
-  finishCalibration() {
-    const profile = this.profileFromSamples({
-      left: this.calibrationLeft,
-      right: this.calibrationRight,
-      leftEar: this.calibrationLeftEar,
-      rightEar: this.calibrationRightEar
-    });
-    const counts = new Map();
-    for (const key of this.calibrationPoseKeys) counts.set(key, (counts.get(key) || 0) + 1);
-    this.activePoseKey = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "neutral";
+  finishCalibration(now = performance.now()) {
+    const samples = this.calibrationWindow.samples(now);
+    if (!samples) return false;
+    const profile = this.profileFromSamples(samples);
+    this.activePoseKey = this.calibrationWindow.key;
     this.poseProfiles.set(this.activePoseKey, profile);
     this.loadProfile(profile);
     this.resetMotion();
+    return true;
   }
 
   profileFromSamples(samples) {
     return {
-      openLeft: clamp(extremeMean(samples.left, 3, false, .05), .01, .4),
-      openRight: clamp(extremeMean(samples.right, 3, false, .05), .01, .4),
-      openLeftEar: extremeMean(samples.leftEar, 3, true, 0) || null,
-      openRightEar: extremeMean(samples.rightEar, 3, true, 0) || null
+      openLeft: clamp(median(samples.left, .05), .01, .4),
+      openRight: clamp(median(samples.right, .05), .01, .4),
+      openLeftEar: median(samples.leftEar) || null,
+      openRightEar: median(samples.rightEar) || null
     };
   }
 
@@ -126,48 +167,45 @@ export class AngleRobustBlinkDetector {
     this.openRightEar = profile.openRightEar;
   }
 
-  updatePoseProfile(key, left, right, geometry) {
+  updatePoseProfile(now, key, left, right, geometry, weights) {
     let poseChanged = false;
     if (!this.activePoseKey) this.activePoseKey = key;
     if (key !== this.activePoseKey) {
-      if (key === this.poseCandidateKey) this.poseCandidateFrames += 1;
-      else {
+      if (key !== this.poseCandidateKey) {
         this.poseCandidateKey = key;
-        this.poseCandidateFrames = 1;
+        this.poseCandidateSince = now;
       }
-      if (this.poseCandidateFrames >= 5) {
-        this.activePoseKey = key;
-        this.poseCandidateKey = null;
-        this.poseCandidateFrames = 0;
-        this.resetMotion();
-        poseChanged = true;
-        const cached = this.poseProfiles.get(key);
-        if (cached) {
-          this.loadProfile(cached);
-          this.poseSamples = null;
-        } else {
-          this.poseSamples = { left: [], right: [], leftEar: [], rightEar: [] };
-        }
+      // Do not apply the previous pose's thresholds while the head is moving.
+      if (now - this.poseCandidateSince < 160) return { poseChanged: false, recalibrating: true };
+      this.activePoseKey = key;
+      this.poseCandidateKey = null;
+      this.poseCandidateSince = null;
+      this.resetMotion();
+      poseChanged = true;
+      const cached = this.poseProfiles.get(key);
+      if (cached) {
+        this.loadProfile(cached);
+        this.poseWindow = null;
+      } else {
+        this.poseWindow = new OpenBaselineWindow();
       }
     } else {
       this.poseCandidateKey = null;
-      this.poseCandidateFrames = 0;
+      this.poseCandidateSince = null;
     }
 
-    if (this.poseSamples) {
-      this.poseSamples.left.push(clamp(left));
-      this.poseSamples.right.push(clamp(right));
-      if (geometry.leftEar) this.poseSamples.leftEar.push(geometry.leftEar);
-      if (geometry.rightEar) this.poseSamples.rightEar.push(geometry.rightEar);
-      if (this.poseSamples.left.length >= 12) {
-        const profile = this.profileFromSamples(this.poseSamples);
+    if (this.poseWindow) {
+      this.poseWindow.add({ now, key, left, right, geometry, weights, reference: this });
+      const samples = this.poseWindow.samples(now);
+      if (samples) {
+        const profile = this.profileFromSamples(samples);
         this.poseProfiles.set(this.activePoseKey, profile);
         this.loadProfile(profile);
-        this.poseSamples = null;
+        this.poseWindow = null;
         this.resetMotion();
       }
     }
-    return { poseChanged, recalibrating: Boolean(this.poseSamples) };
+    return { poseChanged, recalibrating: Boolean(this.poseWindow) };
   }
 
   resetMotion() {
@@ -195,8 +233,13 @@ export class AngleRobustBlinkDetector {
     this.smoothRight = this.smoothRight === null ? right : this.smoothRight * .55 + right * .45;
 
     const geometry = eyeGeometry(landmarks, aspectRatio);
-    const pose = this.updatePoseProfile(poseProfileKey(landmarks, aspectRatio), left, right, geometry);
+    const weights = eyeVisibilityWeights(landmarks, aspectRatio);
+    const pose = this.activePoseKey
+      ? this.updatePoseProfile(now, poseProfileKey(landmarks, aspectRatio), left, right, geometry, weights)
+      : { poseChanged: false, recalibrating: true };
     if (pose.recalibrating) {
+      this.resetMotion();
+      this.state = "uncertain";
       return {
         blink: false,
         closureStarted: false,
@@ -223,7 +266,6 @@ export class AngleRobustBlinkDetector {
     const rightLevel = Math.max(this.normalizedBlendClosure(this.smoothRight, this.openRight), rightGeometryLevel);
     const rawLeftLevel = Math.max(this.normalizedBlendClosure(left, this.openLeft), leftGeometryLevel);
     const rawRightLevel = Math.max(this.normalizedBlendClosure(right, this.openRight), rightGeometryLevel);
-    const weights = eyeVisibilityWeights(landmarks, aspectRatio);
     const combined = leftLevel * weights.left + rightLevel * weights.right;
     const rawCombined = rawLeftLevel * weights.left + rawRightLevel * weights.right;
     const angled = weights.asymmetry >= .1;
@@ -320,20 +362,45 @@ function eyeGeometry(landmarks, aspectRatio = 1) {
 }
 
 export class OpenEyeExposureTracker {
-  constructor() {
+  constructor({ maximumUncertainMs = 3000 } = {}) {
+    this.maximumUncertainMs = maximumUncertainMs;
     this.reset();
   }
 
   reset(now = null) {
     this.openMs = 0;
     this.lastAt = now;
+    this.lastState = null;
+    this.uncertainSince = null;
+    this.continuityLost = false;
+    this.restartedAt = -Infinity;
   }
 
   update(now, state) {
     const delta = this.lastAt === null ? 0 : Math.min(150, Math.max(0, now - this.lastAt));
+    // No new frames is also an observation gap, even if the next frame is open.
+    if (this.lastAt !== null && now - this.lastAt > 250) {
+      this.uncertainSince ??= this.lastAt;
+      this.lastState = "uncertain";
+    }
+    if (state === "uncertain") this.uncertainSince ??= this.lastAt ?? now;
+    if (this.uncertainSince !== null && now - this.uncertainSince >= this.maximumUncertainMs) {
+      this.openMs = 0;
+      this.continuityLost = true;
+    }
+    if (state === "open") {
+      if (this.continuityLost) this.restartedAt = now;
+      if (this.lastState !== "uncertain") this.openMs += delta;
+      this.continuityLost = false;
+      this.uncertainSince = null;
+    } else if (state === "resting") {
+      this.openMs = 0;
+      this.continuityLost = false;
+      this.uncertainSince = null;
+      this.restartedAt = -Infinity;
+    }
     this.lastAt = now;
-    if (state === "open") this.openMs += delta;
-    else if (state === "resting") this.openMs = 0;
+    this.lastState = state;
     return this.openMs;
   }
 }
@@ -352,7 +419,7 @@ export class BlinkTrendTracker {
     this.lastAt = now;
     this.lastBaselineSampleAt = -Infinity;
     this.lastBlinkAt = -Infinity;
-    this.lowSince = 0;
+    this.lowObservedMs = 0;
     this.suppressUntil = 0;
   }
 
@@ -361,13 +428,13 @@ export class BlinkTrendTracker {
     this.observed = [];
     this.lastAt = now;
     this.lastBlinkAt = -Infinity;
-    this.lowSince = 0;
+    this.lowObservedMs = 0;
   }
 
   addObserved(start, end) {
     if (end <= start) return;
     const previous = this.observed.at(-1);
-    if (previous && start - previous.end <= 250) previous.end = end;
+    if (previous && start <= previous.end) previous.end = Math.max(previous.end, end);
     else this.observed.push({ start, end });
   }
 
@@ -395,7 +462,7 @@ export class BlinkTrendTracker {
       baseline,
       threshold,
       ready: this.baselineRates.length >= 6,
-      lowDurationMs: this.lowSince ? now - this.lowSince : 0,
+      lowDurationMs: this.lowObservedMs,
       sinceLastBlinkMs: now - this.lastBlinkAt,
       suppressed: now < this.suppressUntil
     };
@@ -408,6 +475,7 @@ export class BlinkTrendTracker {
 
     let metrics = this.metrics(now);
     if (
+      state !== "uncertain" &&
       metrics.observedMs >= this.minimumObservedMs &&
       this.baselineRates.length < 18 &&
       now - this.lastBaselineSampleAt >= 10000
@@ -418,8 +486,8 @@ export class BlinkTrendTracker {
     }
 
     const low = metrics.ready && metrics.observedMs >= this.minimumObservedMs && metrics.rate < metrics.threshold;
-    if (low) this.lowSince ||= now;
-    else this.lowSince = 0;
+    if (!low) this.lowObservedMs = 0;
+    else if (state === "open" || state === "resting") this.lowObservedMs += delta;
     return this.metrics(now);
   }
 
@@ -428,7 +496,7 @@ export class BlinkTrendTracker {
     this.lastBlinkAt = now;
     if (closureDuration >= 800) {
       this.suppressUntil = Math.max(this.suppressUntil, now + 30000);
-      this.lowSince = 0;
+      this.lowObservedMs = 0;
     }
     this.prune(now);
   }
@@ -442,6 +510,16 @@ export class BlinkTrendTracker {
       metrics.sinceLastBlinkMs >= 8000 &&
       !metrics.suppressed;
   }
+}
+
+export function openReminderStatus({ now, eyeState, openMs, targetMs, lastReminderAt,
+  cooldownMs = 60000, facePresent = true, reminderVisible = false }) {
+  const cooldownSeconds = Math.ceil(Math.max(0, lastReminderAt + cooldownMs - now) / 1000);
+  return {
+    cooldownSeconds,
+    eligible: facePresent && eyeState === "open" && openMs >= targetMs &&
+      cooldownSeconds === 0 && !reminderVisible
+  };
 }
 
 export class AdaptiveInferenceScheduler {
