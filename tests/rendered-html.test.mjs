@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
-import { openReminderStatus, OpenEyeExposureTracker, BlinkTrendTracker, StableMonitoringStatus } from "../blink-detector.js";
+import { openReminderStatus, OpenEyeExposureTracker, BlinkTrendTracker, StableMonitoringStatus, AdaptiveInferenceScheduler } from "../blink-detector.js";
+import { RelativeDistanceTracker } from "../monitoring-features.js";
 
 const sourceUrl = new URL("../index.html", import.meta.url);
 const builtUrl = new URL("../dist/index.html", import.meta.url);
@@ -68,7 +69,7 @@ test("source and published entry scripts parse successfully", async () => {
     const html = await readFile(url, "utf8");
     const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
     assert.ok(script);
-    new vm.Script(script.replace(/^\s*import .* from .*;$/m, ""));
+    new vm.Script(script.replace(/^\s*import .* from .*;$/gm, ""));
   }
 });
 
@@ -109,6 +110,7 @@ test("monitoring UI explains calibration, eye rest, lost continuity and cooldown
   let displayed;
   const context = vm.createContext({
     faceLastSeen: 20000, OBSERVATION_STALE_MS: 250, calibrationUntil: 0,
+    features: { blink: true, distance: false },
     lastDetection: null, currentEyeState: "open",
     exposureTracker: { continuityLost: false, restartedAt: -Infinity },
     blinkTrendTracker: { metrics: () => ({ observedMs: 10000 }) },
@@ -149,6 +151,7 @@ test("page loop waits for accepted calibration and preserves exposure during a p
   tracker.reset(now);
   const context = vm.createContext({
     running: true, performance: { now: () => now }, lastVideoTime: -1, lastMeterUpdateAt: -Infinity,
+    features: { blink: true, distance: false }, busy: false,
     calibrationUntil: 9000, currentEyeState: "uncertain", lastDetection: null,
     faceLastSeen: -Infinity, OBSERVATION_STALE_MS: 250, animationId: null,
     ui: { video: { readyState: 2, currentTime: 1, videoWidth: 640, videoHeight: 480 }, left: { style: {} }, right: { style: {} } },
@@ -193,6 +196,108 @@ test("page loop waits for accepted calibration and preserves exposure during a p
   context.loop(); // The video timestamp is unchanged: no inference result is available.
   assert.equal(tracker.continuityLost, true);
   assert.equal(tracker.openMs, 0);
+  const beforeDisabled = detectionCalls;
+  let distanceCalls = 0;
+  context.features.blink = false;
+  context.features.distance = true;
+  context.distanceTracker = { update() { distanceCalls++; } };
+  context.blinkDetector.resetMotion = () => { throw new Error("disabled blink analysis ran"); };
+  context.landmarker.detectForVideo = () => ({ faceLandmarks: [[{ x: .5, y: .5 }]] });
+  now += 500;
+  context.ui.video.currentTime++;
+  context.loop();
+  assert.equal(distanceCalls, 1, "distance-only processing works without blendshapes");
+  assert.equal(detectionCalls, beforeDisabled);
+});
+
+async function featureHarness() {
+  const source = await readFile(sourceUrl, "utf8");
+  const ui = new Proxy({}, { get(target, key) {
+    if (!(key in target)) {
+      const classes = new Set();
+      target[key] = { textContent: "", style: { setProperty() {} }, setAttribute() {},
+        classList: { contains: (name) => classes.has(name), add: (name) => classes.add(name), remove: (name) => classes.delete(name) } };
+    }
+    return target[key];
+  } });
+  const calls = { stopped: 0, closed: 0, released: 0, options: [] };
+  const context = vm.createContext({
+    ui, features: { blink: true, distance: true }, running: true, busy: false,
+    performance: { now: () => 10000 }, MOBILE_COMPACT: false,
+    distanceTracker: new RelativeDistanceTracker(), exposureTracker: new OpenEyeExposureTracker(),
+    blinkTrendTracker: new BlinkTrendTracker(), inferenceScheduler: new AdaptiveInferenceScheduler(),
+    blinkDetector: { resetCalibration() {} }, currentEyeState: "open", lastDetection: null,
+    calibrationUntil: 0, nextBreakAt: 100000, lastVideoTime: 0, animationId: 1,
+    activeReminder: null, breakTimer: null, DEFAULT_SENSITIVITY: 3,
+    landmarker: { async setOptions(options) { calls.options.push(options); }, close() { calls.closed++; } },
+    stream: { getTracks: () => [{ stop() { calls.stopped++; } }] },
+    recordSample: () => false, releaseOwnership() { calls.released++; },
+    cancelAnimationFrame() {}, updateSensitivity() {}, setStatus() {}, toast() {}, clearInterval() {}, console
+  });
+  for (const name of ["setFeature", "stop", "start", "updateFeatureControls", "updateDistanceReadout", "configureInference", "dismissReminder", "registerRest"]) {
+    const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n    \\}`))?.[0];
+    assert.ok(fn, name);
+    vm.runInContext(fn, context);
+  }
+  return { context, calls, ui };
+}
+
+test("feature switches reduce work, release camera when all off, and do not auto-start", async () => {
+  const { context, calls, ui } = await featureHarness();
+  context.exposureTracker.openMs = 9000;
+  await context.setFeature("blink", false);
+  assert.equal(context.running, true);
+  assert.equal(context.exposureTracker.openMs, 0);
+  assert.equal(context.inferenceScheduler.snapshot().targetFps, 2);
+  assert.equal(calls.options.at(-1).outputFaceBlendshapes, false);
+  assert.equal(calls.stopped, 0);
+  await context.setFeature("distance", false);
+  assert.equal(context.running, false);
+  assert.equal(calls.stopped, 1);
+  assert.equal(calls.closed, 1);
+  assert.equal(calls.released, 1);
+  assert.equal(ui.start.disabled, true);
+  await context.start();
+  assert.equal(context.running, false);
+  await context.setFeature("blink", true);
+  assert.equal(context.running, false);
+  assert.equal(ui.start.disabled, false);
+});
+
+test("re-enabling blink restores inference speed and requires fresh calibration", async () => {
+  const { context, calls } = await featureHarness();
+  await context.setFeature("blink", false);
+  await context.setFeature("blink", true);
+  assert.equal(context.inferenceScheduler.snapshot().targetFps, 20);
+  assert.equal(context.calibrationUntil, 11500);
+  assert.equal(calls.options.at(-1).outputFaceBlendshapes, true);
+});
+
+test("eye rest cannot dismiss a distance alert, but disabling distance can", async () => {
+  const { context, calls, ui } = await featureHarness();
+  context.activeReminder = "distance";
+  ui.reminder.classList.add("show");
+  context.registerRest();
+  assert.equal(ui.reminder.classList.contains("show"), true);
+  await context.setFeature("distance", false);
+  assert.equal(ui.reminder.classList.contains("show"), false);
+  assert.equal(context.running, true);
+  assert.equal(calls.stopped, 0);
+  context.activeReminder = "exposure";
+  ui.reminder.classList.add("show");
+  context.registerRest();
+  assert.equal(ui.reminder.classList.contains("show"), false);
+});
+
+test("a failed model switch shuts down the camera and releases ownership", async () => {
+  const { context, calls } = await featureHarness();
+  context.console = { error() {} };
+  context.landmarker.setOptions = async () => { throw new Error("test failure"); };
+  await context.setFeature("blink", false);
+  assert.equal(context.running, false);
+  assert.equal(context.busy, false);
+  assert.equal(calls.stopped, 1);
+  assert.equal(calls.released, 1);
 });
 
 test("resuming monitoring does not consume the reminder cooldown", async () => {

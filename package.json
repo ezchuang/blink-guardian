@@ -9,8 +9,8 @@
     "dev": "node scripts/dev-server.mjs",
     "build": "node scripts/build.mjs",
     "start": "node scripts/dev-server.mjs",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/blink-detector.test.mjs",
-    "lint": "node --check blink-detector.js && node --check scripts/build.mjs && node --check scripts/dev-server.mjs"
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/blink-detector.test.mjs tests/monitoring-features.test.mjs",
+    "lint": "node --check blink-detector.js && node --check monitoring-features.js && node --check scripts/build.mjs && node --check scripts/dev-server.mjs"
   },
   "type": "module"
 }
