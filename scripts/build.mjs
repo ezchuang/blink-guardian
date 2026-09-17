@@ -9,6 +9,8 @@ await Promise.all([
   copyFile(new URL("index.html", root), new URL("index.html", dist)),
   copyFile(new URL("blink-detector.js", root), new URL("blink-detector.js", dist)),
   copyFile(new URL("monitoring-features.js", root), new URL("monitoring-features.js", dist)),
+  copyFile(new URL("posture-monitor.js", root), new URL("posture-monitor.js", dist)),
+  copyFile(new URL("posture-worker.js", root), new URL("posture-worker.js", dist)),
   cp(new URL("assets/", root), new URL("assets/", dist), { recursive: true }),
   writeFile(new URL(".nojekyll", dist), "", "utf8")
 ]);
