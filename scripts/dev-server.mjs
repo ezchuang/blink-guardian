@@ -17,7 +17,7 @@ const server = createServer(async (request, response) => {
   try {
     const pathname = decodeURIComponent(new URL(request.url || "/", "http://localhost").pathname);
     const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-    const allowed = ["index.html", "blink-detector.js", "monitoring-features.js"].includes(relative) || relative.startsWith("assets/");
+    const allowed = ["index.html", "blink-detector.js", "monitoring-features.js", "posture-monitor.js", "posture-worker.js"].includes(relative) || relative.startsWith("assets/");
     const file = resolve(root, relative);
     if (!allowed || (!file.startsWith(root + sep) && file !== root)) throw new Error("Not found");
     const details = await stat(file);

@@ -115,6 +115,7 @@ export class RelativeDistanceTracker {
 }
 
 export function reminderSoundPattern(kind = "blink") {
+  if (kind === "posture") return [{ delay: 0, frequency: 660, duration: .18 }, { delay: .26, frequency: 440, duration: .28 }];
   return kind === "distance"
     ? [{ delay: 0, frequency: 330, duration: .5 }]
     : [{ delay: 0, frequency: 470, duration: .16 }, { delay: .18, frequency: 590, duration: .16 }];
