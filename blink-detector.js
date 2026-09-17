@@ -79,7 +79,7 @@ export function eyeVisibilityWeights(landmarks, aspectRatio = 1) {
   };
 }
 
-export function poseProfileKey(landmarks, aspectRatio = 1) {
+export function poseProfileKey(landmarks, aspectRatio = 1, activeKey = null) {
   const leftWidth = landmarkDistance(landmarks, 362, 263, aspectRatio);
   const rightWidth = landmarkDistance(landmarks, 33, 133, aspectRatio);
   const totalWidth = leftWidth + rightWidth;
@@ -94,6 +94,12 @@ export function poseProfileKey(landmarks, aspectRatio = 1) {
   const faceHeight = Math.max(.001, Math.abs(chin.y - forehead.y));
   const eyeLine = (leftOuter.y + rightOuter.y) / 2;
   const pitch = (nose.y - eyeLine) / faceHeight;
+  // Keep a margin around the active bucket so minor jitter cannot switch profiles.
+  if (activeKey && activeKey !== "neutral") {
+    const [yaw, tilt] = activeKey.split(":").map(Number);
+    if (Math.abs(clamp(signedYaw, -.5, .5) / .12 - yaw) <= .75 &&
+        Math.abs(clamp(pitch, -.4, .6) / .08 - tilt) <= .75) return activeKey;
+  }
   const yawBucket = Math.round(clamp(signedYaw, -.5, .5) / .12);
   const pitchBucket = Math.round(clamp(pitch, -.4, .6) / .08);
   return `${yawBucket}:${pitchBucket}`;
@@ -135,7 +141,7 @@ export class AngleRobustBlinkDetector {
 
   addCalibrationFrame(left, right, landmarks, aspectRatio = 1, now = performance.now()) {
     this.calibrationWindow.add({ now, left, right,
-      key: poseProfileKey(landmarks, aspectRatio),
+      key: poseProfileKey(landmarks, aspectRatio, this.calibrationWindow.key),
       geometry: eyeGeometry(landmarks, aspectRatio),
       weights: eyeVisibilityWeights(landmarks, aspectRatio) });
   }
@@ -176,7 +182,7 @@ export class AngleRobustBlinkDetector {
         this.poseCandidateSince = now;
       }
       // Do not apply the previous pose's thresholds while the head is moving.
-      if (now - this.poseCandidateSince < 160) return { poseChanged: false, recalibrating: true };
+      if (now - this.poseCandidateSince < 160) return { poseChanged: false, recalibrating: false, transitioning: true };
       this.activePoseKey = key;
       this.poseCandidateKey = null;
       this.poseCandidateSince = null;
@@ -235,10 +241,11 @@ export class AngleRobustBlinkDetector {
     const geometry = eyeGeometry(landmarks, aspectRatio);
     const weights = eyeVisibilityWeights(landmarks, aspectRatio);
     const pose = this.activePoseKey
-      ? this.updatePoseProfile(now, poseProfileKey(landmarks, aspectRatio), left, right, geometry, weights)
+      ? this.updatePoseProfile(now, poseProfileKey(landmarks, aspectRatio, this.activePoseKey), left, right, geometry, weights)
       : { poseChanged: false, recalibrating: true };
-    if (pose.recalibrating) {
-      this.resetMotion();
+    if (pose.recalibrating || pose.transitioning) {
+      // Preserve closure while a candidate pose is being confirmed.
+      if (pose.recalibrating) this.resetMotion();
       this.state = "uncertain";
       return {
         blink: false,
@@ -253,7 +260,8 @@ export class AngleRobustBlinkDetector {
         angled: false,
         closeThreshold: this.thresholds(false).close,
         poseChanged: pose.poseChanged,
-        recalibrating: true
+        recalibrating: Boolean(pose.recalibrating),
+        transitioning: Boolean(pose.transitioning)
       };
     }
     if (this.smoothLeft === null) {
@@ -359,6 +367,29 @@ function eyeGeometry(landmarks, aspectRatio = 1) {
     leftEar: ratio(362, 263, 385, 380, 387, 373),
     rightEar: ratio(33, 133, 160, 144, 158, 153)
   };
+}
+
+// Presentation only: detection, timers and reminders never use this delay.
+export class StableMonitoringStatus {
+  constructor({ delayMs = 1000 } = {}) {
+    this.delayMs = delayMs;
+    this.current = null;
+    this.candidate = null;
+  }
+
+  update(status, now, immediate = false) {
+    if (immediate || !this.current || status[0] === this.current[0]) {
+      this.current = status;
+      this.candidate = null;
+    } else {
+      if (this.candidate?.status[0] !== status[0]) this.candidate = { status, since: now };
+      if (now - this.candidate.since >= this.delayMs) {
+        this.current = status;
+        this.candidate = null;
+      }
+    }
+    return this.current;
+  }
 }
 
 export class OpenEyeExposureTracker {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
-import { openReminderStatus, OpenEyeExposureTracker, BlinkTrendTracker } from "../blink-detector.js";
+import { openReminderStatus, OpenEyeExposureTracker, BlinkTrendTracker, StableMonitoringStatus } from "../blink-detector.js";
 
 const sourceUrl = new URL("../index.html", import.meta.url);
 const builtUrl = new URL("../dist/index.html", import.meta.url);
@@ -72,6 +72,36 @@ test("source and published entry scripts parse successfully", async () => {
   }
 });
 
+test("main and mini status ignore brief flicker, show sustained changes, and stop immediately", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  const fn = source.match(/function setStatus\([^)]*\) \{[\s\S]*?\n    \}/)?.[0];
+  assert.ok(fn);
+  const node = () => ({ textContent: "", classList: { contains: () => false, toggle() {} } });
+  const ui = Object.fromEntries(["status", "title", "hint", "live", "miniStatus", "miniTitle", "miniHint", "miniLive"].map((key) => [key, node()]));
+  let now = 0;
+  const context = vm.createContext({ ui, performance: { now: () => now }, statusDisplay: new StableMonitoringStatus() });
+  vm.runInContext(fn, context);
+  context.setStatus("監測中", "保持自然", "", true);
+  for (now = 250; now <= 3000; now += 250) {
+    context.setStatus(now % 500 ? "角度校正" : "監測中", "保持自然", "", true, true);
+    assert.equal(ui.miniStatus.textContent, "監測中");
+  }
+  now = 4000;
+  context.setStatus("閉眼休息", "休息中", "", true, true);
+  now = 4750;
+  context.setStatus("閉眼休息", "休息中", "", true, true);
+  assert.equal(ui.miniStatus.textContent, "監測中");
+  now = 5000;
+  context.setStatus("閉眼休息", "休息中", "", true, true);
+  assert.equal(ui.miniStatus.textContent, "閉眼休息");
+  assert.equal(ui.status.textContent, "閉眼休息");
+  now = 5100;
+  context.setStatus("監測中", "保持自然", "", true, true);
+  context.setStatus("已停止", "鏡頭已關閉", "", false);
+  assert.equal(ui.miniStatus.textContent, "已停止");
+  assert.equal(ui.title.textContent, "鏡頭已關閉");
+});
+
 test("monitoring UI explains calibration, eye rest, lost continuity and cooldown", async () => {
   const source = await readFile(sourceUrl, "utf8");
   const fn = source.match(/function updateMonitoringStatus\(now, reminder\) \{[\s\S]*?\n    \}/)?.[0];
@@ -87,7 +117,7 @@ test("monitoring UI explains calibration, eye rest, lost continuity and cooldown
   vm.runInContext(fn, context);
   const reminder = openReminderStatus({ now: 20000, eyeState: "open", openMs: 15000, targetMs: 10000, lastReminderAt: 10000 });
   context.updateMonitoringStatus(20000, reminder);
-  assert.equal(displayed[0], "張眼中");
+  assert.equal(displayed[0], "監測中");
   assert.match(displayed[2], /間隔中，還有 50 秒/);
   context.lastDetection = { recalibrating: true };
   context.updateMonitoringStatus(20000, reminder);

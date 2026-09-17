@@ -55,6 +55,56 @@ test("keeps equal eye weights for a frontal face", () => {
   assert.ok(weights.asymmetry < .0001);
 });
 
+test("closed eyes stay resting across pose-boundary jitter and count once on reopening", () => {
+  const detector = new AngleRobustBlinkDetector();
+  for (let now = 0; now <= 1000; now += 50) {
+    detector.addCalibrationFrame(.05, .05, landmarks(.1, .1, 1, 1, .4714), 1, now);
+  }
+  assert.equal(detector.finishCalibration(1000), true);
+  const key = detector.activePoseKey;
+  for (let now = 1050; now <= 3000; now += 50) {
+    const nose = now % 100 ? .4714 : .4726;
+    const result = detector.update({ now, left: .12, right: .12, landmarks: landmarks(.1, .1, .05, .05, nose) });
+    assert.equal(result.state, "resting");
+    assert.equal(result.recalibrating, false);
+    assert.equal(detector.activePoseKey, key);
+    assert.equal(result.closureStarted, now === 1050);
+  }
+  const reopened = detector.update({ now: 3050, left: .05, right: .05, landmarks: landmarks(.1, .1, 1, 1, .4714) });
+  assert.equal(reopened.blink, true);
+  assert.equal(reopened.closureDuration, 2000);
+});
+
+test("a brief candidate pose does not erase closure or report calibration", () => {
+  const detector = calibratedDetector();
+  detector.update({ now: 1000, left: .9, right: .9, landmarks: landmarks(.1, .1, .05, .05) });
+  const pending = detector.update({ now: 1050, left: .9, right: .9, landmarks: landmarks(.1, .1, .05, .05, .58) });
+  assert.equal(pending.transitioning, true);
+  assert.equal(pending.recalibrating, false);
+  assert.equal(detector.closed, true);
+  assert.equal(detector.closedAt, 1000);
+  const returned = detector.update({ now: 1100, left: .9, right: .9, landmarks: landmarks(.1, .1, .05, .05) });
+  assert.equal(returned.state, "resting");
+  assert.equal(returned.closureStarted, false);
+});
+
+test("hysteresis retains adjacent boundary poses but permits real movement in both axes", () => {
+  const initial = landmarks(.1, .1, 1, 1, .4714);
+  const key = poseProfileKey(initial);
+  assert.notEqual(poseProfileKey(landmarks(.1, .1, 1, 1, .4726)), key);
+  assert.equal(poseProfileKey(landmarks(.1, .1, 1, 1, .4726), 1, key), key);
+  assert.notEqual(poseProfileKey(landmarks(.1, .1, 1, 1, .58), 1, key), key);
+  assert.notEqual(poseProfileKey(landmarks(.16, .04), 1, key), key);
+});
+
+test("initial calibration can complete while coordinates jitter across a bucket boundary", () => {
+  const detector = new AngleRobustBlinkDetector();
+  for (let now = 0; now <= 1000; now += 50) {
+    detector.addCalibrationFrame(.05, .05, landmarks(.1, .1, 1, 1, now % 100 ? .4726 : .4714), 1, now);
+  }
+  assert.equal(detector.finishCalibration(1000), true);
+});
+
 test("counts a normal frontal blink after reopening", () => {
   const detector = calibratedDetector();
   const frames = [
