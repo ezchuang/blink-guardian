@@ -437,7 +437,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, openReminderStatus } from "./blink-detector.js";
+    import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, openReminderStatus, StableMonitoringStatus } from "./blink-detector.js";
 
     const MP_VERSION = "0.10.35";
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
@@ -514,7 +514,10 @@
     let miniWindow = null;
     let history = loadHistory();
 
-    function setStatus(label, title, hint, isLive = false) {
+    const statusDisplay = new StableMonitoringStatus();
+
+    function setStatus(label, title, hint, isLive = false, stabilize = false) {
+      [label, title, hint, isLive] = statusDisplay.update([label, title, hint, isLive], performance.now(), !stabilize);
       if (ui.status.textContent !== label) ui.status.textContent = label;
       if (ui.title.textContent !== title) ui.title.textContent = title;
       if (ui.hint.textContent !== hint) ui.hint.textContent = hint;
@@ -861,17 +864,18 @@
     }
 
     function updateMonitoringStatus(now, reminder) {
+      const showStatus = (...args) => setStatus(...args, true);
       const facePresent = now - faceLastSeen <= OBSERVATION_STALE_MS;
       if (!facePresent) {
-        setStatus("等待影像", "暫停計時", exposureTracker.continuityLost
+        showStatus("等待影像", "暫停計時", exposureTracker.continuityLost
           ? "連續時間已中斷；讓臉部清楚入鏡後重新累計。"
           : "請讓臉部清楚入鏡；暫時無法判定眼睛狀態。", false);
       } else if (calibrationUntil || lastDetection?.recalibrating) {
-        setStatus(calibrationUntil ? "開眼校正" : "角度校正", "自然張開眼睛", "請穩定看向螢幕；取得可信的開眼基準後恢復計時。", false);
+        showStatus(calibrationUntil ? "開眼校正" : "角度校正", "自然張開眼睛", "請穩定看向螢幕；取得可信的開眼基準後恢復計時。", false);
       } else if (currentEyeState === "resting") {
-        setStatus("閉眼休息", "開眼計時已歸零", "閉眼期間不會繼續計時，也不會發出眨眼提醒。", true);
+        showStatus("閉眼休息", "開眼計時已歸零", "閉眼期間不會繼續計時，也不會發出眨眼提醒。", true);
       } else if (currentEyeState === "uncertain") {
-        setStatus("判定不穩", "暫停計時", exposureTracker.continuityLost
+        showStatus("判定不穩", "暫停計時", exposureTracker.continuityLost
           ? "連續時間已中斷；恢復判定後重新累計。"
           : "暫時保留先前累計；調整姿勢或光線，讓眼睛清楚入鏡。", false);
       } else {
@@ -880,7 +884,7 @@
           ? `開眼提醒間隔中，還有 ${reminder.cooldownSeconds} 秒；計時持續。`
           : collecting ? "頻率收集中；開眼達設定秒數時會提醒。"
           : "開眼達設定秒數時會提醒；也會留意近一分鐘的眨眼節奏。";
-        setStatus("張眼中", now - exposureTracker.restartedAt < 5000 ? "連續時間中斷，重新累計" : "保持自然就好", hint, true);
+        showStatus("監測中", now - exposureTracker.restartedAt < 5000 ? "連續時間中斷，重新累計" : "保持自然就好", hint, true);
       }
     }
 
