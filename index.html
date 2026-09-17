@@ -283,6 +283,51 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
     }
+    /* Keep the dashboard bounded by content, not the height of its settings list. */
+    body:not(.mini-mode) .shell { padding-top: 16px; }
+    body:not(.mini-mode) header { margin-bottom: 18px; }
+    body:not(.mini-mode) .hero { gap: 24px; margin-bottom: 20px; align-items: center; }
+    body:not(.mini-mode) h1 { font-size: clamp(32px, 4vw, 48px); line-height: 1.05; }
+    body:not(.mini-mode) h1 br { display: none; }
+    body:not(.mini-mode) .eyebrow { margin-bottom: 8px; }
+    body:not(.mini-mode) .intro { margin-top: 10px; font-size: 15px; }
+    body:not(.mini-mode) .reference-card { padding: 12px; }
+    body:not(.mini-mode) .reference-card strong { font-size: 28px; }
+    body:not(.mini-mode) .monitor { scroll-margin-top: 12px; }
+    body:not(.mini-mode) .monitor-grid { grid-template-columns: minmax(0, 1.1fr) minmax(360px, 1fr); min-height: 0; align-items: stretch; }
+    body:not(.mini-mode) .camera-panel { min-height: 360px; max-height: 480px; }
+    body:not(.mini-mode) video { object-fit: contain; }
+    body:not(.mini-mode) .face-guide { width: 160px; height: 210px; }
+    body:not(.mini-mode) .stats { min-height: 0; padding: 20px; display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px 16px; }
+    body:not(.mini-mode) .stats-head { grid-column: 1 / -1; padding-bottom: 10px; }
+    body:not(.mini-mode) .rate-wrap { padding: 0; }
+    body:not(.mini-mode) .rate-ring { width: 132px; }
+    body:not(.mini-mode) .rate-copy strong { font-size: 46px; }
+    body:not(.mini-mode) .mini-stats { grid-template-columns: 1fr; gap: 8px; }
+    body:not(.mini-mode) .mini-stat { padding: 10px 12px; }
+    body:not(.mini-mode) .mini-stat span { margin-bottom: 3px; }
+    body:not(.mini-mode) .mini-stat strong { font-size: 21px; }
+    body:not(.mini-mode) .history-card { grid-column: 1 / -1; margin: 0; padding: 10px 12px; }
+    body:not(.mini-mode) .chart-wrap, body:not(.mini-mode) .chart-wrap canvas { min-height: 64px; height: 64px; }
+    body.mobile-compact:not(.mini-mode) .chart-wrap { height: 0; min-height: 0; }
+    body:not(.mini-mode) .settings { grid-column: 1 / -1; margin: 0; padding: 0; }
+    body:not(.mini-mode) .monitor-actions { grid-template-columns: 1fr 1fr; }
+    body:not(.mini-mode) .monitor-actions .primary { grid-column: 1 / -1; min-height: 44px; }
+    .settings-launch { min-height: 44px; border: 1px solid var(--line); border-radius: 13px; background: white; color: var(--green); cursor: pointer; font-weight: 720; }
+    .feature-dialog { width: min(480px, calc(100vw - 24px)); }
+    .feature-dialog .dialog-head h2 { font-family: inherit; font-size: 22px; }
+    .feature-dialog .feature-settings { padding-bottom: 8px; }
+    body.monitoring:not(.mini-mode) .hero { display: none; }
+    body:not(.mini-mode) .camera-panel:has(.reminder.show) { max-height: none; }
+    @media (max-width: 760px) {
+      body:not(.mini-mode) .hero { grid-template-columns: 1fr; }
+      body:not(.mini-mode) .reference { display: none; }
+      body:not(.mini-mode) .monitor-grid { grid-template-columns: 1fr; }
+      body:not(.mini-mode) .camera-panel { min-height: 220px; height: 220px; }
+      body:not(.mini-mode) .camera-panel:has(.reminder.show) { height: auto; min-height: 390px; }
+      body:not(.mini-mode) .stats { padding: 16px; }
+      body:not(.mini-mode) .camera-copy strong { font-size: 17px; }
+    }
   </style>
 </head>
 <body>
@@ -353,6 +398,12 @@
               <h3 class="feature-heading">偵測功能</h3>
               <div class="setting-row"><span id="blinkToggleLabel">眨眼提醒</span><div class="feature-tools"><button id="blinkSoundPreview" type="button" aria-label="試聽眨眼提示音">試聽</button><button class="toggle" id="blinkDetectionToggle" type="button" aria-labelledby="blinkToggleLabel" aria-pressed="true"></button></div></div>
               <div class="setting-row"><span id="distanceToggleLabel">距離提醒</span><div class="feature-tools"><button id="distanceSoundPreview" type="button" aria-label="試聽距離提示音">試聽</button><button class="toggle" id="distanceDetectionToggle" type="button" aria-labelledby="distanceToggleLabel" aria-pressed="false"></button></div></div>
+              <div class="setting-row"><span id="postureToggleLabel">坐姿／駝背提醒</span><div class="feature-tools"><button id="postureSoundPreview" type="button" aria-label="試聽坐姿提示音">試聽</button><button class="toggle" id="postureToggle" type="button" aria-labelledby="postureToggleLabel" aria-pressed="false"></button></div></div>
+              <div id="postureSettings" hidden>
+                <button class="baseline-button" id="postureBaseline" type="button" disabled>設定自然坐姿基準</button>
+                <p class="feature-note" id="postureStatus">開始監測後，讓頭部與雙肩完整入鏡。</p>
+                <p class="feature-note">保持自然坐姿 3 秒設定基準。頭肩相對高度持續降低 10 秒才提醒；不能診斷駝背，轉身或肩膀被遮住會暫停判定。鏡頭移動後請重設基準。</p>
+              </div>
               <div id="distanceSettings" hidden>
                 <button class="baseline-button" id="setDistanceBaseline" type="button" disabled>以目前坐姿設定基準</button>
                 <p class="feature-note" id="distanceStatus">開始監測後，請設定基準坐姿。</p>
@@ -360,6 +411,7 @@
               </div>
               <p class="feature-note" id="featureHelp">眨眼預設開啟，距離預設關閉；設定不儲存。全部關閉會釋放鏡頭。</p>
             </div>
+            <div id="advancedSettings">
             <div class="setting-row">
               <label for="targetRange">連續開眼提醒</label>
               <div class="target-control"><input id="targetRange" type="range" min="6" max="20" value="10" aria-describedby="targetValue" /><strong id="targetValue">10 秒</strong></div>
@@ -369,7 +421,9 @@
               <div class="target-control"><input id="sensitivityRange" type="range" min="1" max="6" value="3" aria-describedby="sensitivityValue" /><strong id="sensitivityValue">標準</strong></div>
             </div>
             <div class="setting-row"><span>提示音</span><button class="toggle" id="soundToggle" type="button" aria-label="切換提示音" aria-pressed="true"></button></div>
+            </div>
             <div class="monitor-actions">
+              <button class="settings-launch" id="settingsButton" type="button">偵測與提醒設定</button>
               <button class="mini-launch" id="miniLaunchButton" type="button">開啟迷你監測窗</button>
               <button class="primary" id="startButton" type="button">開啟鏡頭並開始</button>
             </div>
@@ -440,7 +494,7 @@
     <section class="how" aria-labelledby="howTitle">
       <h2 id="howTitle">有感提醒，<br>沒有監視感。</h2>
       <div class="steps">
-        <div class="step"><div><strong>影像留在瀏覽器</strong><p>鏡頭畫面不會上傳、錄影或儲存；模型只讀取眼睛閉合程度。</p></div></div>
+        <div class="step"><div><strong>影像留在瀏覽器</strong><p>鏡頭畫面不會上傳、錄影或儲存；模型在裝置上估計眼睛、臉部及啟用時的頭肩位置。</p></div></div>
         <div class="step"><div><strong>兼顧暴露時間與眨眼節奏</strong><p>連續開眼達設定秒數時提醒，提醒後至少間隔 60 秒；最近一分鐘的有效眨眼持續低於個人節奏，而且當下又一段時間沒眨時，才會發出趨勢提醒。頻率依可判定的觀測時間換算；換姿勢會暫停計時，超過 3 秒無法判定則重新累計。</p></div></div>
         <div class="step"><div><strong>每 20 分鐘看看遠方</strong><p>持續監測 20 分鐘後，也會提醒你看約 6 公尺外至少 20 秒。</p></div></div>
       </div>
@@ -465,6 +519,7 @@
   <script type="module">
     import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, openReminderStatus, StableMonitoringStatus } from "./blink-detector.js";
     import { RelativeDistanceTracker, reminderSoundPattern } from "./monitoring-features.js";
+    import { PostureMonitor } from "./posture-monitor.js";
 
     const MP_VERSION = "0.10.35";
     const MP_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
@@ -499,14 +554,17 @@
       distanceSettings: $("distanceSettings"), distanceStatus: $("distanceStatus"), baseline: $("setDistanceBaseline"),
       blinkPreview: $("blinkSoundPreview"), distancePreview: $("distanceSoundPreview"),
       featureHelp: $("featureHelp"), featureDialog: $("featureDialog"), miniSettings: $("miniSettingsButton"),
-      miniRateUnit: $("miniRateUnit"), miniRateLabel: $("miniRateLabel")
+      miniRateUnit: $("miniRateUnit"), miniRateLabel: $("miniRateLabel"),
+      postureToggle: $("postureToggle"), postureSettings: $("postureSettings"),
+      postureBaseline: $("postureBaseline"), postureStatus: $("postureStatus")
     };
 
     let landmarker = null;
     let stream = null;
     let running = false;
     let busy = false;
-    const features = { blink: !MINI_MODE || pageParams.get("blink") !== "0", distance: MINI_MODE && pageParams.get("distance") === "1" };
+    const features = { blink: !MINI_MODE || pageParams.get("blink") !== "0", distance: MINI_MODE && pageParams.get("distance") === "1", posture: MINI_MODE && pageParams.get("posture") === "1" };
+    const postureMonitor = new PostureMonitor();
     const distanceTracker = new RelativeDistanceTracker();
     let activeReminder = null;
     let lastAlertAt = -Infinity;
@@ -647,17 +705,20 @@
     function updateFeatureControls() {
       ui.blinkToggle.setAttribute("aria-pressed", String(features.blink));
       ui.distanceToggle.setAttribute("aria-pressed", String(features.distance));
-      ui.blinkToggle.disabled = ui.distanceToggle.disabled = busy;
-      ui.start.disabled = ui.miniToggle.disabled = busy || (!features.blink && !features.distance);
+      ui.postureToggle.setAttribute("aria-pressed", String(features.posture));
+      ui.blinkToggle.disabled = ui.distanceToggle.disabled = ui.postureToggle.disabled = busy;
+      ui.postureSettings.hidden = !features.posture;
+      ui.postureBaseline.disabled = busy || !running || !features.posture || !postureMonitor.worker;
+      ui.start.disabled = ui.miniToggle.disabled = busy || !Object.values(features).some(Boolean);
       ui.miniLaunch.disabled = busy;
       ui.target.disabled = ui.sensitivity.disabled = !features.blink || busy;
       ui.distanceSettings.hidden = !features.distance;
       ui.baseline.disabled = busy || !running || !features.distance;
-      ui.miniRateUnit.textContent = features.blink ? "秒" : "×";
-      ui.miniRateLabel.textContent = features.blink ? "連續開眼時間" : "臉部相對大小";
-      ui.featureHelp.textContent = features.blink || features.distance
-        ? "設定不儲存。全部關閉會釋放鏡頭；停止後重新開始需重設距離基準。"
-        : "兩項偵測都已關閉，鏡頭已釋放。請先開啟至少一項，再開始監測。";
+      ui.miniRateUnit.textContent = features.blink ? "秒" : features.distance ? "×" : "";
+      ui.miniRateLabel.textContent = features.blink ? "連續開眼時間" : features.distance ? "臉部相對大小" : "坐姿監測";
+      ui.featureHelp.textContent = Object.values(features).some(Boolean)
+        ? "設定不儲存。全部關閉會釋放鏡頭；停止後重新開始需重設距離與坐姿基準。"
+        : "所有偵測都已關閉，鏡頭已釋放。請先開啟至少一項，再開始監測。";
       updateDistanceReadout(performance.now());
     }
 
@@ -695,11 +756,14 @@
         ui.left.style.height = ui.right.style.height = "0%";
         if (!enabled && ["exposure", "trend", "preview", "break"].includes(activeReminder)) dismissReminder();
         nextBreakAt = now + 20 * 60 * 1000;
-      } else {
+      } else if (name === "distance") {
         distanceTracker.reset();
         if (!enabled && activeReminder === "distance") dismissReminder();
+      } else {
+        postureMonitor.stop();
+        if (!enabled && activeReminder === "posture") dismissReminder();
       }
-      if (!features.blink && !features.distance) {
+      if (!Object.values(features).some(Boolean)) {
         stop();
         updateFeatureControls();
         return;
@@ -708,7 +772,11 @@
         busy = true;
         updateFeatureControls();
         try {
-          await landmarker.setOptions({ outputFaceBlendshapes: features.blink });
+          if (features.blink || features.distance) {
+            if (!landmarker) landmarker = await createLandmarker();
+            else await landmarker.setOptions({ outputFaceBlendshapes: features.blink });
+          } else { landmarker?.close?.(); landmarker = null; }
+          if (name === "posture" && enabled) await postureMonitor.start(MP_MODULE, MP_WASM);
           configureInference(now);
           lastVideoTime = -1;
         } catch (error) {
@@ -739,7 +807,7 @@
       if (!soundOn) { toast("請先開啟提示音，再試聽。"); return; }
       primeAudio();
       beep(kind);
-      toast(kind === "distance" ? "距離提醒：一聲較長低音。" : "眨眼提醒：兩聲短音。");
+      toast(kind === "posture" ? "坐姿提醒：高低兩聲。" : kind === "distance" ? "距離提醒：一聲較長低音。" : "眨眼提醒：兩聲短音。");
     }
 
     function formatTime(seconds) {
@@ -905,7 +973,7 @@
         ctx.textAlign = "left";
       }
 
-      for (const event of data.events.filter((item) => ["blink", "exposure", "trend", "break", "distance"].includes(item.type))) {
+      for (const event of data.events.filter((item) => ["blink", "exposure", "trend", "break", "distance", "posture"].includes(item.type))) {
         const px = x(event.t);
         ctx.strokeStyle = "rgba(237,118,93,.4)";
         ctx.lineWidth = 1;
@@ -967,7 +1035,7 @@
       }
       for (const event of rows) {
         const time = new Date(event.t).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-        const type = event.type === "distance" ? "距離提醒" : event.type === "trend" ? "節奏提醒" : event.type === "blink" || event.type === "exposure" ? "開眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
+        const type = event.type === "posture" ? "坐姿提醒" : event.type === "distance" ? "距離提醒" : event.type === "trend" ? "節奏提醒" : event.type === "blink" || event.type === "exposure" ? "開眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
         const row = document.createElement("div");
         const timeElement = document.createElement("time");
         const typeElement = document.createElement("strong");
@@ -1004,6 +1072,12 @@
 
     function updateMonitoringStatus(now, reminder) {
       const showStatus = (...args) => setStatus(...args, true);
+      if (!features.blink && !features.distance && features.posture) {
+        const state = postureMonitor.tracker.snapshot(now).state;
+        showStatus("坐姿監測", state === "needs-baseline" ? "請設定坐姿基準" : state === "calibrating" ? "保持自然坐姿" : state === "uncertain" ? "頭肩需完整入鏡" : "留意自然坐姿",
+          postureMonitor.error || "偵測設定中可重設基準；僅估計頭肩相對姿勢。", state === "normal");
+        return;
+      }
       const facePresent = now - faceLastSeen <= (features.blink ? OBSERVATION_STALE_MS : 1250);
       const distance = features.distance ? distanceTracker.snapshot(now) : null;
       if (!facePresent) {
@@ -1073,7 +1147,28 @@
       }
       if (features.blink && canAlert && !ui.reminder.classList.contains("show") && now >= nextBreakAt && !breakTimer) showDistanceBreak();
       if (features.distance && canAlert && !ui.reminder.classList.contains("show") && distanceTracker.shouldRemind(now)) showProximityReminder(now);
+      if (features.posture) {
+        updatePostureReadout(now);
+        if (activeReminder === "posture" && postureMonitor.tracker.snapshot(now).state === "normal") dismissReminder();
+        if (canAlert && !ui.reminder.classList.contains("show") && postureMonitor.tracker.shouldRemind(now)) {
+          postureMonitor.tracker.markReminded(now);
+          activeReminder = "posture"; lastAlertAt = now;
+          ui.reminderTitle.textContent = "調整一下坐姿";
+          ui.reminderCopy.textContent = "頭肩姿勢持續偏離基準。換個舒服、自然的坐姿，讓肩膀放鬆。";
+          ui.dismiss.textContent = "知道了";
+          ui.reminder.classList.add("show");
+          recordEvent("posture", "坐姿提醒", "頭肩相對高度持續降低 10 秒");
+          beep("posture");
+        }
+      }
       if (recordSample(now)) drawHistoryCharts(true);
+    }
+
+    function updatePostureReadout(now) {
+      const labels = { "needs-baseline": "請設定基準，讓頭部與雙肩完整入鏡。", calibrating: "請維持自然坐姿約 3 秒；不穩定或看不到肩膀時會繼續等待。", uncertain: "暫停判定：請面向鏡頭，讓頭部與雙肩完整入鏡。", normal: "目前接近坐姿基準。", slouch: "頭肩姿勢偏離基準，持續 10 秒才提醒。" };
+      ui.postureBaseline.disabled = busy || !running || !features.posture || !postureMonitor.worker;
+      const text = postureMonitor.error || (!running ? "開始監測後，讓頭部與雙肩完整入鏡。" : labels[postureMonitor.tracker.snapshot(now).state]);
+      if (ui.postureStatus.textContent !== text) ui.postureStatus.textContent = text;
     }
 
     function updateTimerDisplay(now) {
@@ -1081,7 +1176,7 @@
       lastTimerUpdateAt = now;
       if (!features.blink) {
         ui.rate.textContent = "—";
-        ui.miniRate.textContent = distanceTracker.snapshot(now).ratio?.toFixed(1) ?? "—";
+        ui.miniRate.textContent = features.distance ? distanceTracker.snapshot(now).ratio?.toFixed(1) ?? "—" : "—";
         return;
       }
       const projectedOpenMs = currentEyeState === "open" && now - faceLastSeen <= OBSERVATION_STALE_MS && exposureTracker.lastAt !== null
@@ -1177,7 +1272,7 @@
 
     async function start() {
       if (busy || running) return;
-      if (!features.blink && !features.distance) { toast("請先開啟至少一項偵測。"); return; }
+      if (!Object.values(features).some(Boolean)) { toast("請先開啟至少一項偵測。"); return; }
       busy = true;
       updateFeatureControls();
       primeAudio();
@@ -1196,8 +1291,11 @@
           ui.miniToggle.textContent = "再試一次";
           return;
         }
-        if (!landmarker) landmarker = await createLandmarker();
-        else await landmarker.setOptions({ outputFaceBlendshapes: features.blink });
+        if (features.blink || features.distance) {
+          if (!landmarker) landmarker = await createLandmarker();
+          else await landmarker.setOptions({ outputFaceBlendshapes: features.blink });
+        }
+        if (features.posture) await postureMonitor.start(MP_MODULE, MP_WASM);
         setStatus("等待權限", "請允許使用鏡頭", "影像只會在這個瀏覽器分頁中處理，不會上傳。 ");
         stream = await navigator.mediaDevices.getUserMedia({
           video: MOBILE_COMPACT ? {
@@ -1216,6 +1314,8 @@
         ui.video.srcObject = stream;
         await ui.video.play();
         running = true;
+        document.body.classList.add("monitoring");
+        if (!MINI_MODE) document.querySelector(".monitor").scrollIntoView({ block: "start" });
         startedAt = performance.now();
         inactiveAccumulated = 0;
         hiddenStartedAt = 0;
@@ -1244,7 +1344,7 @@
         ui.start.textContent = "停止監測";
         ui.miniToggle.disabled = false;
         ui.miniToggle.textContent = "停止監測";
-        setStatus(features.blink ? "校正 3 秒" : "等待距離基準", "自然看著螢幕", "保持臉部在框內；距離提醒需手動設定基準。", true);
+        setStatus(features.blink ? "校正 3 秒" : features.distance ? "等待距離基準" : "等待坐姿基準", "自然看著螢幕", "偵測設定中可設定距離與坐姿基準；坐姿偵測需頭肩完整入鏡。", true);
         monitorChannel?.postMessage({ type: "monitor-started", mode: MINI_MODE ? "mini" : "full" });
         lastVideoTime = -1;
         busy = false;
@@ -1265,12 +1365,14 @@
     function stop() {
       recordSample(performance.now(), true);
       running = false;
+      document.body.classList.remove("monitoring");
+      postureMonitor.stop();
       cancelAnimationFrame(animationId);
       stream?.getTracks().forEach((track) => track.stop());
       stream = null;
       distanceTracker.reset();
       activeReminder = null;
-      if (!features.blink && !features.distance) {
+      if (!Object.values(features).some(Boolean)) {
         landmarker?.close?.();
         landmarker = null;
       }
@@ -1337,6 +1439,7 @@
       miniUrl.searchParams.set("sound", soundOn ? "1" : "0");
       miniUrl.searchParams.set("blink", features.blink ? "1" : "0");
       miniUrl.searchParams.set("distance", features.distance ? "1" : "0");
+      miniUrl.searchParams.set("posture", features.posture ? "1" : "0");
       miniWindow = window.open(miniUrl.href, "blinkGuardianMonitor", "popup,width=320,height=240");
       if (!miniWindow) {
         toast("瀏覽器封鎖了迷你視窗，請允許此網站開啟彈出式視窗。");
@@ -1368,6 +1471,7 @@
         ui.reminder.classList.remove("show");
         activeReminder = null;
         distanceTracker.invalidate();
+        postureMonitor.tracker.invalidate();
         if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
         setStatus("背景暫停", "目前沒有計數", "瀏覽器在背景會停止高頻影像處理；回到此頁後會自動重新校正。", false);
         recordEvent("pause", "監測暫停", "頁面進入背景或視窗最小化");
@@ -1415,7 +1519,8 @@
     function loop() {
       if (!running) return;
       const now = performance.now();
-      if (!busy && ui.video.readyState >= 2 && ui.video.currentTime !== lastVideoTime && inferenceScheduler.shouldRun(now)) {
+      if (!busy && !document.hidden && features.posture) postureMonitor.sample(ui.video, now);
+      if (!busy && landmarker && (features.blink || features.distance) && ui.video.readyState >= 2 && ui.video.currentTime !== lastVideoTime && inferenceScheduler.shouldRun(now)) {
         lastVideoTime = ui.video.currentTime;
         try {
           const inferenceStartedAt = performance.now();
@@ -1506,6 +1611,16 @@
     ui.blinkPreview.addEventListener("click", () => previewSound("blink"));
     ui.distancePreview.addEventListener("click", () => previewSound("distance"));
     ui.miniSettings.addEventListener("click", () => ui.featureDialog.showModal());
+    $("settingsButton").addEventListener("click", () => ui.featureDialog.showModal());
+    ui.postureToggle.addEventListener("click", () => setFeature("posture", !features.posture));
+    $("postureSoundPreview").addEventListener("click", () => previewSound("posture"));
+    ui.postureBaseline.addEventListener("click", () => {
+      if (!running || busy || !features.posture || !postureMonitor.worker) return;
+      postureMonitor.tracker.beginCalibration();
+      if (activeReminder === "posture") dismissReminder();
+      ui.featureDialog.close();
+      toast("保持自然坐姿約 3 秒，讓頭部與雙肩完整入鏡。");
+    });
     $("closeFeatureDialog").addEventListener("click", () => ui.featureDialog.close());
     ui.target.addEventListener("input", () => { ui.targetValue.textContent = `${ui.target.value} 秒`; });
     ui.sensitivity.addEventListener("input", () => updateSensitivity(ui.sensitivity.value));
@@ -1546,19 +1661,21 @@
       inference: inferenceScheduler.snapshot(),
       features: { ...features },
       distance: distanceTracker.snapshot(performance.now()),
+      posture: { ...postureMonitor.tracker.snapshot(performance.now()), error: postureMonitor.error, processedFrames: postureMonitor.processedFrames || 0 },
       detection: { state: currentEyeState, calibrating: Boolean(calibrationUntil || lastDetection?.recalibrating),
         pose: blinkDetector.activePoseKey, baselineLeft: blinkDetector.openLeftEar,
         baselineRight: blinkDetector.openRightEar, openMs: exposureTracker.openMs,
         continuityLost: exposureTracker.continuityLost },
       browser: navigator.userAgent
     });
+    $("miniFeatureBody").append($("detectionSettings"), $("advancedSettings"));
     if (MINI_MODE) {
       document.title = "迷你監測｜眨眼守門員";
-      $("miniFeatureBody").append($("detectionSettings"));
       // Transfer the selection once, then remove it so reloading uses defaults.
       const cleanUrl = new URL(location.href);
       cleanUrl.searchParams.delete("blink");
       cleanUrl.searchParams.delete("distance");
+      cleanUrl.searchParams.delete("posture");
       window.history.replaceState(null, "", cleanUrl.href);
     }
     const initialTarget = Number(pageParams.get("target"));

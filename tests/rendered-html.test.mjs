@@ -151,7 +151,7 @@ test("page loop waits for accepted calibration and preserves exposure during a p
   tracker.reset(now);
   const context = vm.createContext({
     running: true, performance: { now: () => now }, lastVideoTime: -1, lastMeterUpdateAt: -Infinity,
-    features: { blink: true, distance: false }, busy: false,
+    features: { blink: true, distance: false }, busy: false, document: { hidden: false },
     calibrationUntil: 9000, currentEyeState: "uncertain", lastDetection: null,
     faceLastSeen: -Infinity, OBSERVATION_STALE_MS: 250, animationId: null,
     ui: { video: { readyState: 2, currentTime: 1, videoWidth: 640, videoHeight: 480 }, left: { style: {} }, right: { style: {} } },
@@ -222,7 +222,10 @@ async function featureHarness() {
   } });
   const calls = { stopped: 0, closed: 0, released: 0, options: [] };
   const context = vm.createContext({
-    ui, features: { blink: true, distance: true }, running: true, busy: false,
+    ui, features: { blink: true, distance: true, posture: false }, running: true, busy: false,
+    document: { body: { classList: { remove() {} } } },
+    postureMonitor: { stop() {}, worker: null, async start() { this.worker = {}; } },
+    MP_MODULE: "mock", MP_WASM: "mock",
     performance: { now: () => 10000 }, MOBILE_COMPACT: false,
     distanceTracker: new RelativeDistanceTracker(), exposureTracker: new OpenEyeExposureTracker(),
     blinkTrendTracker: new BlinkTrendTracker(), inferenceScheduler: new AdaptiveInferenceScheduler(),
@@ -298,6 +301,24 @@ test("a failed model switch shuts down the camera and releases ownership", async
   assert.equal(context.busy, false);
   assert.equal(calls.stopped, 1);
   assert.equal(calls.released, 1);
+});
+
+test("posture-only monitoring keeps camera alive and releases it when the last toggle turns off", async () => {
+  const { context, calls, ui } = await featureHarness();
+  let workerStops=0;
+  context.postureMonitor.stop=()=>{workerStops++;context.postureMonitor.worker=null;};
+  await context.setFeature("posture",true);
+  assert.ok(context.postureMonitor.worker);
+  await context.setFeature("blink",false);
+  await context.setFeature("distance",false);
+  assert.equal(context.running,true);
+  assert.equal(context.landmarker,null);
+  assert.equal(calls.stopped,0);
+  context.activeReminder="posture"; ui.reminder.classList.add("show");
+  context.registerRest();assert.equal(ui.reminder.classList.contains("show"),true);
+  await context.setFeature("posture",false);
+  assert.equal(context.running,false);assert.equal(calls.stopped,1);
+  assert.ok(workerStops>=2);assert.equal(ui.start.disabled,true);
 });
 
 test("resuming monitoring does not consume the reminder cooldown", async () => {
