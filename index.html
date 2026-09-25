@@ -358,6 +358,7 @@
           <div class="camera-top">
             <div class="live-label" id="liveLabel"><i></i><span id="statusText">尚未開始</span></div>
             <button class="secondary" id="testButton" type="button">試播提醒</button>
+            <button class="secondary" id="reconnectCamera" type="button" hidden>重新連接鏡頭</button>
           </div>
           <div class="camera-bottom">
             <div class="camera-copy"><strong id="cameraTitle">準備好就開始</strong><span id="cameraHint">請坐在光線均勻的位置，讓完整臉部出現在畫面中。</span></div>
@@ -453,6 +454,7 @@
             <button class="primary" id="miniToggleButton" type="button">開始監測</button>
             <button class="secondary" id="miniSettingsButton" type="button">偵測設定</button>
             <button class="secondary" id="fullModeButton" type="button">完整模式</button>
+            <button class="secondary" id="miniReconnectCamera" type="button" hidden>重連鏡頭</button>
           </div>
         </section>
       </div>
@@ -518,7 +520,7 @@
 
   <script type="module">
     import { AdaptiveInferenceScheduler, AngleRobustBlinkDetector, BlinkTrendTracker, OpenEyeExposureTracker, openReminderStatus, StableMonitoringStatus } from "./blink-detector.js";
-    import { RelativeDistanceTracker, reminderSoundPattern } from "./monitoring-features.js";
+    import { RelativeDistanceTracker, reminderSoundPattern, CameraHealth } from "./monitoring-features.js";
     import { PostureMonitor } from "./posture-monitor.js";
 
     const MP_VERSION = "0.10.35";
@@ -563,6 +565,9 @@
     let stream = null;
     let running = false;
     let busy = false;
+    let cameraFault = false;
+    let cameraGeneration = 0;
+    const cameraHealth = new CameraHealth();
     const features = { blink: !MINI_MODE || pageParams.get("blink") !== "0", distance: MINI_MODE && pageParams.get("distance") === "1", posture: MINI_MODE && pageParams.get("posture") === "1" };
     const postureMonitor = new PostureMonitor();
     const distanceTracker = new RelativeDistanceTracker();
@@ -1035,7 +1040,7 @@
       }
       for (const event of rows) {
         const time = new Date(event.t).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-        const type = event.type === "posture" ? "坐姿提醒" : event.type === "distance" ? "距離提醒" : event.type === "trend" ? "節奏提醒" : event.type === "blink" || event.type === "exposure" ? "開眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
+        const type = event.type === "camera-disconnected" ? "鏡頭中斷" : event.type === "camera-reconnected" ? "鏡頭恢復" : event.type === "posture" ? "坐姿提醒" : event.type === "distance" ? "距離提醒" : event.type === "trend" ? "節奏提醒" : event.type === "blink" || event.type === "exposure" ? "開眼提醒" : event.type === "break" ? "遠望提醒" : event.type === "pause" ? "監測暫停" : "恢復監測";
         const row = document.createElement("div");
         const timeElement = document.createElement("time");
         const typeElement = document.createElement("strong");
@@ -1270,6 +1275,93 @@
       catch { options.baseOptions.delegate = "CPU"; return FaceLandmarker.createFromOptions(vision, options); }
     }
 
+    function resetCameraObservation() {
+      const now = performance.now();
+      faceLastSeen = -Infinity; lastDetection = null; lastVideoTime = -1;
+      currentEyeState = "uncertain";
+      blinkDetector.resetCalibration(); exposureTracker.reset(now);
+      blinkTrendTracker.resetWindow(now);
+      distanceTracker.reset(); postureMonitor.tracker.reset();
+      calibrationUntil = features.blink ? now + 1500 : 0;
+      inferenceScheduler.resetSchedule(now);
+      dismissReminder();
+    }
+
+    function showCameraFault(reason = "鏡頭沒有提供新影像，可能與睡眠喚醒或裝置中斷有關。") {
+      if (!running) return;
+      if (!cameraFault) {
+        cameraFault = true;
+        resetCameraObservation();
+        recordEvent("camera-disconnected", "鏡頭中斷", reason);
+      }
+      ui.rate.textContent = ui.miniRate.textContent = "—";
+      ui.ring.style.setProperty("--progress", "0deg");
+      $("reconnectCamera").hidden = $("miniReconnectCamera").hidden = false;
+      $("fullModeButton").hidden = true;
+      setStatus("鏡頭中斷", "偵測已暫停", reason + " 可重新連接；本次眨眼累計會保留。", false);
+    }
+
+    function clearCameraFault() {
+      if (!cameraFault) return;
+      cameraFault = false;
+      resetCameraObservation();
+      $("reconnectCamera").hidden = $("miniReconnectCamera").hidden = true;
+      $("fullModeButton").hidden = false;
+      recordEvent("camera-reconnected", "鏡頭恢復", "保留累計，重新校正；距離與坐姿需重設基準");
+      setStatus("鏡頭恢復", "重新校正", "累計已保留；距離與坐姿提醒請重新設定基準。", true);
+    }
+
+    function watchCamera() {
+      if (!running || busy || document.hidden) return;
+      const state = cameraHealth.check(ui.video, stream?.getVideoTracks()[0]);
+      if ((state === "ended" || state === "stalled") && !cameraFault) showCameraFault();
+      else if (state === "flowing") clearCameraFault();
+    }
+
+    function bindCameraEvents() {
+      const current = stream;
+      current?.getVideoTracks().forEach(track => {
+        track.addEventListener("ended", () => { if (stream === current) showCameraFault("鏡頭串流已中斷。"); });
+      });
+      cameraHealth.reset();
+    }
+
+    async function reconnectCamera() {
+      if (!running || busy || !cameraFault) return;
+      const generation = ++cameraGeneration;
+      busy = true; updateFeatureControls();
+      $("reconnectCamera").disabled = $("miniReconnectCamera").disabled = true;
+      setStatus("重新連接中", "等待鏡頭", "請確認鏡頭權限與裝置連線。", false);
+      stream?.getTracks().forEach(track => track.stop()); stream = null;
+      ui.video.srcObject = null;
+      let timeout;
+      let expired = false;
+      try {
+        const constraints = { audio: false, video: { facingMode: "user", width: { ideal: MOBILE_COMPACT ? 480 : 640, max: 960 }, height: { ideal: MOBILE_COMPACT ? 360 : 480, max: 720 }, frameRate: { ideal: MOBILE_COMPACT ? 15 : 24, max: MOBILE_COMPACT ? 20 : 30 } } };
+        const request = navigator.mediaDevices.getUserMedia(constraints).then(candidate => {
+          if (expired || generation !== cameraGeneration || !running) { candidate.getTracks().forEach(track => track.stop()); throw new Error("Cancelled"); }
+          return candidate;
+        });
+        await Promise.race([
+          (async () => { stream = await request; ui.video.srcObject = stream; await ui.video.play(); })(),
+          new Promise((_, reject) => { timeout = setTimeout(() => { expired = true; reject(new Error("Timeout")); }, 20000); })
+        ]);
+        if (generation !== cameraGeneration || !running) return;
+        bindCameraEvents();
+        setStatus("等待影像", "鏡頭已連接，確認影像中", "收到新影像後才恢復偵測。", false);
+      } catch (error) {
+        if (generation !== cameraGeneration || !running) return;
+        stream?.getTracks().forEach(track => track.stop()); stream = null; ui.video.srcObject = null;
+        showCameraFault(error?.name === "NotAllowedError" ? "鏡頭權限未開啟，請允許後再試。" : "無法恢復鏡頭，請確認裝置後再試。");
+      } finally {
+        clearTimeout(timeout);
+        if (generation === cameraGeneration) {
+          busy = false; updateFeatureControls();
+          $("reconnectCamera").disabled = $("miniReconnectCamera").disabled = false;
+        }
+      }
+    }
+
     async function start() {
       if (busy || running) return;
       if (!Object.values(features).some(Boolean)) { toast("請先開啟至少一項偵測。"); return; }
@@ -1314,6 +1406,7 @@
         ui.video.srcObject = stream;
         await ui.video.play();
         running = true;
+        bindCameraEvents();
         document.body.classList.add("monitoring");
         if (!MINI_MODE) document.querySelector(".monitor").scrollIntoView({ block: "start" });
         startedAt = performance.now();
@@ -1365,6 +1458,12 @@
     function stop() {
       recordSample(performance.now(), true);
       running = false;
+      cameraGeneration++;
+      cameraFault = false;
+      busy = false;
+      $("reconnectCamera").disabled = $("miniReconnectCamera").disabled = false;
+      $("reconnectCamera").hidden = $("miniReconnectCamera").hidden = true;
+      $("fullModeButton").hidden = false;
       document.body.classList.remove("monitoring");
       postureMonitor.stop();
       cancelAnimationFrame(animationId);
@@ -1476,6 +1575,7 @@
         setStatus("背景暫停", "目前沒有計數", "瀏覽器在背景會停止高頻影像處理；回到此頁後會自動重新校正。", false);
         recordEvent("pause", "監測暫停", "頁面進入背景或視窗最小化");
       } else if (hiddenStartedAt) {
+        cameraHealth.reset();
         const hiddenDuration = now - hiddenStartedAt;
         inactiveAccumulated += hiddenDuration;
         nextBreakAt += hiddenDuration;
@@ -1518,6 +1618,7 @@
 
     function loop() {
       if (!running) return;
+      if (cameraFault) { animationId = requestAnimationFrame(loop); return; }
       const now = performance.now();
       if (!busy && !document.hidden && features.posture) postureMonitor.sample(ui.video, now);
       if (!busy && landmarker && (features.blink || features.distance) && ui.video.readyState >= 2 && ui.video.currentTime !== lastVideoTime && inferenceScheduler.shouldRun(now)) {
@@ -1598,6 +1699,9 @@
     }
 
     ui.start.addEventListener("click", () => running ? stop() : start());
+    $("reconnectCamera").addEventListener("click", reconnectCamera);
+    $("miniReconnectCamera").addEventListener("click", reconnectCamera);
+    setInterval(watchCamera, 1000);
     ui.miniToggle.addEventListener("click", () => running ? stop() : start());
     ui.miniSound.addEventListener("click", () => setSound(!soundOn));
     ui.miniLaunch.addEventListener("click", openMiniMonitor);
@@ -1643,10 +1747,12 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("resize", () => drawHistoryCharts(true));
     window.addEventListener("pagehide", () => {
+      stop();
       stream?.getTracks().forEach((track) => track.stop());
       releaseOwnership();
       monitorChannel?.close();
       landmarker?.close?.();
+      landmarker = null;
     });
     monitorChannel?.addEventListener("message", (event) => {
       if (event.data?.type === "history-updated") {
@@ -1658,6 +1764,7 @@
     });
     window.getBlinkGuardianDiagnostics = () => ({
       camera: stream?.getVideoTracks?.()[0]?.getSettings?.() || null,
+      cameraHealth: { interrupted: cameraFault, trackState: stream?.getVideoTracks?.()[0]?.readyState, muted: stream?.getVideoTracks?.()[0]?.muted, videoTime: ui.video.currentTime, paused: ui.video.paused },
       inference: inferenceScheduler.snapshot(),
       features: { ...features },
       distance: distanceTracker.snapshot(performance.now()),

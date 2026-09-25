@@ -120,3 +120,19 @@ export function reminderSoundPattern(kind = "blink") {
     ? [{ delay: 0, frequency: 330, duration: .5 }]
     : [{ delay: 0, frequency: 470, duration: .16 }, { delay: .18, frequency: 590, duration: .16 }];
 }
+
+export class CameraHealth {
+  constructor() { this.reset(); }
+  reset(now = Date.now()) { this.lastTime = null; this.lastProgressAt = now; this.lastCheckAt = now; }
+  check(video, track, now = Date.now()) {
+    if (now - this.lastCheckAt > 10000) this.lastProgressAt = now;
+    this.lastCheckAt = now;
+    if (!track || track.readyState === "ended") return "ended";
+    if (!track.muted && !video.paused && video.readyState >= 2 && video.currentTime !== this.lastTime) {
+      const advancing = this.lastTime !== null;
+      this.lastTime = video.currentTime;
+      if (advancing) { this.lastProgressAt = now; return "flowing"; }
+    }
+    return now - this.lastProgressAt >= 8000 ? "stalled" : "waiting";
+  }
+}

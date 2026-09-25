@@ -151,7 +151,7 @@ test("page loop waits for accepted calibration and preserves exposure during a p
   tracker.reset(now);
   const context = vm.createContext({
     running: true, performance: { now: () => now }, lastVideoTime: -1, lastMeterUpdateAt: -Infinity,
-    features: { blink: true, distance: false }, busy: false, document: { hidden: false },
+    features: { blink: true, distance: false }, busy: false, cameraFault: false, document: { hidden: false },
     calibrationUntil: 9000, currentEyeState: "uncertain", lastDetection: null,
     faceLastSeen: -Infinity, OBSERVATION_STALE_MS: 250, animationId: null,
     ui: { video: { readyState: 2, currentTime: 1, videoWidth: 640, videoHeight: 480 }, left: { style: {} }, right: { style: {} } },
@@ -223,6 +223,7 @@ async function featureHarness() {
   const calls = { stopped: 0, closed: 0, released: 0, options: [] };
   const context = vm.createContext({
     ui, features: { blink: true, distance: true, posture: false }, running: true, busy: false,
+    cameraGeneration: 0, cameraFault: false, $: () => ({}),
     document: { body: { classList: { remove() {} } } },
     postureMonitor: { stop() {}, worker: null, async start() { this.worker = {}; } },
     MP_MODULE: "mock", MP_WASM: "mock",
@@ -319,6 +320,55 @@ test("posture-only monitoring keeps camera alive and releases it when the last t
   await context.setFeature("posture",false);
   assert.equal(context.running,false);assert.equal(calls.stopped,1);
   assert.ok(workerStops>=2);assert.equal(ui.start.disabled,true);
+});
+
+async function recoveryHarness(request) {
+  const source = await readFile(sourceUrl, "utf8");
+  const buttons = {};
+  let timeout;
+  const c = vm.createContext({
+    running: true, busy: false, cameraFault: true, cameraGeneration: 0, stream: null,
+    MOBILE_COMPACT: false, blinks: [1,2,3], closures: [1], lastReminderAt: 123,
+    ui: { video: { srcObject: null, async play() {} } },
+    $: id => buttons[id] ||= {},
+    navigator: { mediaDevices: { getUserMedia: request } },
+    updateFeatureControls() {}, setStatus() {}, bindCameraEvents() {},
+    showCameraFault() { c.cameraFault = true; },
+    setTimeout(fn) { timeout = fn; return 1; }, clearTimeout() {}
+  });
+  const fn = source.match(/async function reconnectCamera\(\) \{[\s\S]*?\n    \}/)[0];
+  vm.runInContext(fn,c);
+  return { c, expire: () => timeout() };
+}
+
+test("reconnect preserves session totals and waits for actual frames to clear fault", async () => {
+  const stream = { getTracks: () => [] };
+  const { c } = await recoveryHarness(async () => stream);
+  await c.reconnectCamera();
+  assert.equal(c.stream,stream); assert.equal(c.cameraFault,true);
+  assert.equal(c.blinks.length,3); assert.equal(c.closures.length,1);
+  assert.equal(c.lastReminderAt,123); assert.equal(c.busy,false);
+});
+
+test("permission failure remains retryable and late timed-out streams are closed", async () => {
+  const denied = await recoveryHarness(async()=>{throw Object.assign(new Error(),{name:"NotAllowedError"});});
+  await denied.c.reconnectCamera(); assert.equal(denied.c.busy,false);
+  assert.equal(denied.c.cameraFault,true); assert.equal(denied.c.stream,null);
+  let finish, stopped=0;
+  const late = await recoveryHarness(()=>new Promise(resolve=>finish=resolve));
+  const pending=late.c.reconnectCamera(); late.expire(); await pending;
+  finish({getTracks:()=>[{stop(){stopped++;}}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(stopped,1); assert.equal(late.c.stream,null);
+});
+
+test("stopping during reconnect closes the subsequently granted camera", async () => {
+  let finish, stopped=0;
+  const { c }=await recoveryHarness(()=>new Promise(resolve=>finish=resolve));
+  const pending=c.reconnectCamera();
+  c.cameraGeneration++; c.running=false; c.busy=false;
+  finish({getTracks:()=>[{stop(){stopped++;}}]}); await pending;
+  assert.equal(stopped,1); assert.equal(c.stream,null);
 });
 
 test("resuming monitoring does not consume the reminder cooldown", async () => {
