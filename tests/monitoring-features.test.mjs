@@ -1,6 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readDistanceSample, RelativeDistanceTracker, reminderSoundPattern } from "../monitoring-features.js";
+import { readDistanceSample, RelativeDistanceTracker, reminderSoundPattern, CameraHealth } from "../monitoring-features.js";
+
+test("camera health distinguishes loss of video from absence of a face", () => {
+  const h = new CameraHealth(); h.reset(0);
+  const video = { currentTime: 0, readyState: 2, paused: false };
+  const track = { readyState: "live", muted: false };
+  assert.equal(h.check(video, track, 0), "waiting");
+  video.currentTime = 1;
+  assert.equal(h.check(video, track, 1000), "flowing");
+  assert.equal(h.check(video, track, 8000), "waiting");
+  assert.equal(h.check(video, track, 9000), "stalled");
+  video.currentTime = 2; assert.equal(h.check(video, track, 9500), "flowing");
+  track.muted = true; video.currentTime = 3;
+  assert.equal(h.check(video, track, 17500), "stalled");
+  track.readyState = "ended"; assert.equal(h.check(video, track, 18000), "ended");
+});
+
+test("sleep/wake gives live tracks a grace period but ended tracks fail immediately", () => {
+  const h = new CameraHealth(); h.reset(0);
+  const video = { currentTime: 1, readyState: 2, paused: false };
+  const track = { readyState: "live", muted: false };
+  h.check(video, track, 0);
+  assert.equal(h.check(video, track, 100000), "waiting");
+  assert.equal(h.check(video, track, 108000), "stalled");
+  h.reset(110000); track.readyState = "ended";
+  assert.equal(h.check(video, track, 110000), "ended");
+});
 
 export function face(scale = 1) {
   const points = [];
